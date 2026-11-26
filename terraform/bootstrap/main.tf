@@ -259,10 +259,13 @@ resource "aws_iam_role_policy" "github_deploy" {
         Sid    = "ManageHaleClockSecrets"
         Effect = "Allow"
         Action = [
+          "ssm:AddTagsToResource",
           "ssm:DeleteParameter",
           "ssm:GetParameter",
           "ssm:GetParameters",
-          "ssm:PutParameter"
+          "ssm:ListTagsForResource",
+          "ssm:PutParameter",
+          "ssm:RemoveTagsFromResource"
         ]
         Resource = "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/hawihandyman/haleclock/*"
       },
