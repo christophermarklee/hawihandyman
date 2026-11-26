@@ -16,7 +16,7 @@
       <h2 class="font-bold">Calendar</h2>
       <p class="text-xs text-slate-500">Hawaii time</p>
     </div>
-    <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
       {% for day in week_days %}
       <div class="min-w-0 rounded-xl border p-2 space-y-2 {{ 'border-emerald-500 bg-emerald-50' if day.date == today else 'border-slate-200 bg-white' }}">
         <div class="flex items-baseline justify-between gap-1">
