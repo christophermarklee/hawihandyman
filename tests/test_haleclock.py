@@ -52,6 +52,32 @@ def book_slot(client, service_id: int, start: str, phone="8085551234", **overrid
 
 
 class TestAvailability:
+    def test_booking_page_and_month_endpoint_show_open_dates(self, client):
+        response = client.get("/book")
+        assert response.status_code == 200
+        assert "Available" in response.text
+        assert "Unavailable" in response.text
+        assert 'id="calendar-days"' in response.text
+
+        monday = next_weekday(0)
+        month = monday.replace(day=1)
+        response = client.get(
+            "/api/availability/month",
+            params={"service_id": 3, "month": month.isoformat()},
+        )
+        assert response.status_code == 200
+        assert monday.isoformat() in response.json()["available_dates"]
+
+        sunday = monday + timedelta(days=6)
+        assert sunday.isoformat() not in response.json()["available_dates"]
+
+        assert book_slot(client, 3, f"{monday}T08:00").status_code == 200
+        response = client.get(
+            "/api/availability/month",
+            params={"service_id": 3, "month": month.isoformat()},
+        )
+        assert monday.isoformat() not in response.json()["available_dates"]
+
     def test_workday_slots_respect_hours_and_duration(self, client):
         monday = next_weekday(0)
         response = client.get(f"/api/availability?service_id=1&date={monday}")

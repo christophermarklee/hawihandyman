@@ -10,7 +10,7 @@ from sqlmodel import Session, select
 from ..availability import available_slots, slot_is_available
 from ..database import get_session, get_settings
 from ..models import Appointment, Client, Invoice, InvoiceItem, Service
-from ..timeutil import to_utc
+from ..timeutil import local_now, to_utc
 from ..web import templates
 
 router = APIRouter()
@@ -30,8 +30,33 @@ def book_page(request: Request, session: Session = Depends(get_session)):
     return templates.TemplateResponse(
         request,
         "public/book.html",
-        {"services": active_services(session), "settings": settings},
+        {
+            "services": active_services(session),
+            "settings": settings,
+            "today": local_now(settings).date().isoformat(),
+        },
     )
+
+
+@router.get("/api/availability/month")
+def availability_month(
+    service_id: int,
+    month: date,
+    session: Session = Depends(get_session),
+):
+    settings = get_settings(session)
+    service = session.get(Service, service_id)
+    if service is None or not service.active:
+        raise HTTPException(status_code=404, detail="Unknown service")
+
+    first_day = month.replace(day=1)
+    available_dates = []
+    day = first_day
+    while day.month == first_day.month:
+        if available_slots(session, service, day, settings):
+            available_dates.append(day.isoformat())
+        day += timedelta(days=1)
+    return {"month": first_day.strftime("%Y-%m"), "available_dates": available_dates}
 
 
 @router.get("/api/availability")

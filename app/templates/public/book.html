@@ -7,9 +7,7 @@
       {% for service in services %}
       <label class="flex items-center gap-3 rounded-xl border border-slate-200 p-4 has-[:checked]:border-emerald-600 has-[:checked]:bg-emerald-50">
         <input type="radio" name="service_id" value="{{ service.id }}" form="slot-form"
-               class="h-5 w-5 accent-emerald-700"
-               hx-get="/api/availability" hx-include="#date-picker,this"
-               hx-target="#slots" hx-trigger="change">
+               class="h-5 w-5 accent-emerald-700" {{ 'checked' if loop.first else '' }}>
         <span class="flex-1">
           <span class="font-bold block">{{ service.name }}</span>
           {% if service.description %}<span class="text-sm text-slate-500">{{ service.description }}</span>{% endif %}
@@ -24,10 +22,24 @@
 
   <section class="bg-white rounded-2xl shadow p-5 space-y-3 mt-4">
     <h2 class="font-bold text-lg">2 · Pick a day &amp; time</h2>
-    <input type="date" id="date-picker" name="date" required
-           hx-get="/api/availability" hx-include="input[name=service_id]:checked"
-           hx-target="#slots" hx-trigger="change"
-           class="w-full h-12 rounded-xl border border-slate-300 px-3">
+    <div class="flex items-center justify-between">
+      <button type="button" id="previous-month" aria-label="Previous month"
+              class="h-10 w-10 rounded-xl border border-slate-200 font-bold">‹</button>
+      <h3 id="calendar-month" class="font-bold" aria-live="polite"></h3>
+      <button type="button" id="next-month" aria-label="Next month"
+              class="h-10 w-10 rounded-xl border border-slate-200 font-bold">›</button>
+    </div>
+    <div class="flex gap-4 text-xs text-slate-600">
+      <span class="flex items-center gap-1"><span class="h-3 w-3 rounded bg-emerald-100 border border-emerald-500"></span>Available</span>
+      <span class="flex items-center gap-1"><span class="h-3 w-3 rounded bg-slate-100 border border-slate-300"></span>Unavailable</span>
+    </div>
+    <div class="grid grid-cols-7 gap-1 text-center text-xs text-slate-500" aria-hidden="true">
+      <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span>
+      <span>Fri</span><span>Sat</span><span>Sun</span>
+    </div>
+    <div id="calendar-days" class="grid grid-cols-7 gap-1" aria-label="Booking availability calendar"></div>
+    <p id="calendar-status" class="text-sm text-slate-500" aria-live="polite">Loading dates...</p>
+    <p id="selected-day" class="text-sm font-semibold text-slate-700">Choose an available date.</p>
     <div id="slots" class="text-sm text-slate-500">Choose a service and date to see open times.</div>
   </section>
 
@@ -52,6 +64,212 @@
   </form>
 </div>
 <script>
+  (function () {
+    var today = '{{ today }}';
+    var todayParts = today.split('-').map(Number);
+    var visibleYear = todayParts[0];
+    var visibleMonth = todayParts[1] - 1;
+    var selectedDate = '';
+    var monthRequest = 0;
+    var slotsRequest = 0;
+    var calendarDays = document.getElementById('calendar-days');
+    var calendarMonth = document.getElementById('calendar-month');
+    var calendarStatus = document.getElementById('calendar-status');
+    var selectedDay = document.getElementById('selected-day');
+    var slotsContainer = document.getElementById('slots');
+    var previousMonth = document.getElementById('previous-month');
+    var nextMonth = document.getElementById('next-month');
+
+    function selectedService() {
+      return document.querySelector('input[name="service_id"]:checked');
+    }
+
+    function clearChosenSlot() {
+      document.getElementById('start-input').value = '';
+      var chosen = document.getElementById('chosen-slot');
+      chosen.textContent = '';
+      chosen.classList.add('hidden');
+    }
+
+    function updateMonthControls() {
+      previousMonth.disabled =
+        visibleYear === todayParts[0] && visibleMonth === todayParts[1] - 1;
+      previousMonth.classList.toggle('opacity-40', previousMonth.disabled);
+    }
+
+    function renderDates(availableDates) {
+      calendarDays.replaceChildren();
+      var firstWeekday = (new Date(visibleYear, visibleMonth, 1, 12).getDay() + 6) % 7;
+      var daysInMonth = new Date(visibleYear, visibleMonth + 1, 0, 12).getDate();
+      for (var blank = 0; blank < firstWeekday; blank += 1) {
+        calendarDays.appendChild(document.createElement('span'));
+      }
+      for (var day = 1; day <= daysInMonth; day += 1) {
+        var dateValue = [
+          visibleYear,
+          String(visibleMonth + 1).padStart(2, '0'),
+          String(day).padStart(2, '0')
+        ].join('-');
+        var available = availableDates.has(dateValue);
+        var button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = String(day);
+        button.dataset.date = dateValue;
+        button.disabled = !available;
+        button.title = available ? 'Available' : 'Unavailable';
+        button.setAttribute('aria-label', dateValue + ', ' + button.title);
+        button.setAttribute('aria-pressed', String(selectedDate === dateValue));
+        button.className = 'h-10 rounded-lg text-sm font-semibold ' +
+          (available
+            ? 'border border-emerald-500 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+            : 'border border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed') +
+          (selectedDate === dateValue ? ' ring-2 ring-emerald-700' : '');
+        calendarDays.appendChild(button);
+      }
+    }
+
+    async function loadMonth() {
+      var request = ++monthRequest;
+      var service = selectedService();
+      var monthValue = visibleYear + '-' + String(visibleMonth + 1).padStart(2, '0');
+      calendarMonth.textContent = new Date(visibleYear, visibleMonth, 1, 12)
+        .toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+      updateMonthControls();
+      calendarDays.replaceChildren();
+      if (!service) {
+        calendarStatus.textContent = 'No services are currently available.';
+        return;
+      }
+      calendarStatus.textContent = 'Loading availability...';
+      try {
+        var response = await fetch(
+          '/api/availability/month?service_id=' + encodeURIComponent(service.value) +
+          '&month=' + monthValue + '-01',
+          { headers: { Accept: 'application/json' } }
+        );
+        if (!response.ok) throw new Error('Availability request failed: ' + response.status);
+        var data = await response.json();
+        if (request !== monthRequest) return;
+        renderDates(new Set(data.available_dates));
+        calendarStatus.textContent = data.available_dates.length
+          ? 'Select a highlighted date to see open times.'
+          : 'No dates are available this month.';
+      } catch (error) {
+        if (request !== monthRequest) return;
+        calendarStatus.textContent = 'Could not load availability. Please try again.';
+      }
+    }
+
+    async function loadSlots(dateValue) {
+      var request = ++slotsRequest;
+      var service = selectedService();
+      clearChosenSlot();
+      if (!service) return;
+      slotsContainer.textContent = 'Loading open times...';
+      try {
+        var response = await fetch(
+          '/api/availability?service_id=' + encodeURIComponent(service.value) +
+          '&date=' + encodeURIComponent(dateValue),
+          { headers: { Accept: 'application/json' } }
+        );
+        if (!response.ok) throw new Error('Slot request failed: ' + response.status);
+        var data = await response.json();
+        if (request !== slotsRequest) return;
+        slotsContainer.replaceChildren();
+        if (!data.slots.length) {
+          slotsContainer.textContent = 'No open times that day — try another date.';
+          return;
+        }
+        var grid = document.createElement('div');
+        grid.className = 'grid grid-cols-3 gap-2';
+        data.slots.forEach(function (slot) {
+          var parts = slot.split('T');
+          var dateParts = parts[0].split('-').map(Number);
+          var timeParts = parts[1].split(':').map(Number);
+          var localDate = new Date(dateParts[0], dateParts[1] - 1, dateParts[2], 12);
+          var localTime = new Date(2000, 0, 1, timeParts[0], timeParts[1]);
+          var button = document.createElement('button');
+          button.type = 'button';
+          button.dataset.slot = slot;
+          button.dataset.slotLabel = localDate.toLocaleDateString(undefined, {
+            weekday: 'short', month: 'short', day: 'numeric'
+          }) + ' at ' + localTime.toLocaleTimeString(undefined, {
+            hour: 'numeric', minute: '2-digit'
+          });
+          button.className = 'h-12 rounded-xl border border-emerald-600 text-emerald-700 font-bold';
+          button.textContent = localTime.toLocaleTimeString(undefined, {
+            hour: 'numeric', minute: '2-digit'
+          });
+          grid.appendChild(button);
+        });
+        slotsContainer.appendChild(grid);
+      } catch (error) {
+        if (request !== slotsRequest) return;
+        slotsContainer.textContent = 'Could not load open times. Please try again.';
+      }
+    }
+
+    calendarDays.addEventListener('click', function (event) {
+      var button = event.target.closest('button[data-date]');
+      if (!button || button.disabled) return;
+      selectedDate = button.dataset.date;
+      selectedDay.textContent = 'Available times for ' + new Date(
+        Number(selectedDate.slice(0, 4)),
+        Number(selectedDate.slice(5, 7)) - 1,
+        Number(selectedDate.slice(8, 10)),
+        12
+      ).toLocaleDateString(undefined, {
+        weekday: 'long', month: 'long', day: 'numeric'
+      });
+      renderDates(new Set(Array.from(calendarDays.querySelectorAll('button[data-date]'))
+        .filter(function (dayButton) { return !dayButton.disabled; })
+        .map(function (dayButton) { return dayButton.dataset.date; })));
+      loadSlots(selectedDate);
+    });
+
+    document.querySelectorAll('input[name="service_id"]').forEach(function (input) {
+      input.addEventListener('change', function () {
+        selectedDate = '';
+        selectedDay.textContent = 'Choose an available date.';
+        slotsRequest += 1;
+        slotsContainer.textContent = 'Choose a date to see open times.';
+        clearChosenSlot();
+        loadMonth();
+      });
+    });
+
+    previousMonth.addEventListener('click', function () {
+      if (previousMonth.disabled) return;
+      visibleMonth -= 1;
+      if (visibleMonth < 0) {
+        visibleMonth = 11;
+        visibleYear -= 1;
+      }
+      selectedDate = '';
+      selectedDay.textContent = 'Choose an available date.';
+      slotsRequest += 1;
+      slotsContainer.textContent = 'Choose a date to see open times.';
+      clearChosenSlot();
+      loadMonth();
+    });
+
+    nextMonth.addEventListener('click', function () {
+      visibleMonth += 1;
+      if (visibleMonth > 11) {
+        visibleMonth = 0;
+        visibleYear += 1;
+      }
+      selectedDate = '';
+      selectedDay.textContent = 'Choose an available date.';
+      slotsRequest += 1;
+      slotsContainer.textContent = 'Choose a date to see open times.';
+      clearChosenSlot();
+      loadMonth();
+    });
+
+    loadMonth();
+  })();
+
   document.addEventListener('click', function (event) {
     var button = event.target.closest('[data-slot]');
     if (!button) return;
