@@ -178,8 +178,10 @@ resource "aws_iam_role_policy" "github_deploy" {
         Effect = "Allow"
         Action = [
           "ec2:AllocateAddress",
+          "ec2:AttachInternetGateway",
           "ec2:AssociateRouteTable",
           "ec2:AssociateVpcCidrBlock",
+          "ec2:AuthorizeSecurityGroupEgress",
           "ec2:AuthorizeSecurityGroupIngress",
           "ec2:CreateInternetGateway",
           "ec2:CreateRoute",
@@ -236,6 +238,7 @@ resource "aws_iam_role_policy" "github_deploy" {
           "elasticloadbalancing:ModifyLoadBalancerAttributes",
           "elasticloadbalancing:ModifyListener",
           "elasticloadbalancing:ModifyTargetGroup",
+          "elasticloadbalancing:ModifyTargetGroupAttributes",
           "elasticloadbalancing:SetSecurityGroups",
           "elasticloadbalancing:SetSubnets",
           "elasticloadbalancing:RemoveTags",
