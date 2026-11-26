@@ -298,6 +298,7 @@ resource "aws_iam_role_policy" "github_deploy" {
           "cognito-idp:DescribeManagedLoginBrandingByClient",
           "cognito-idp:DescribeUserPool",
           "cognito-idp:DescribeUserPoolClient",
+          "cognito-idp:GetUserPoolMfaConfig",
           "cognito-idp:ListIdentityProviders",
           "cognito-idp:ListTagsForResource",
           "cognito-idp:SetUserPoolMfaConfig",
