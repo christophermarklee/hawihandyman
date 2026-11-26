@@ -270,6 +270,12 @@ resource "aws_iam_role_policy" "github_deploy" {
         Resource = "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/hawihandyman/haleclock/*"
       },
       {
+        Sid      = "DescribeHaleClockParameters"
+        Effect   = "Allow"
+        Action   = ["ssm:DescribeParameters"]
+        Resource = "*"
+      },
+      {
         Sid      = "ReadHostedZoneForTerraform"
         Effect   = "Allow"
         Action   = ["route53:GetHostedZone", "route53:ListResourceRecordSets"]
