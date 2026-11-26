@@ -11,6 +11,23 @@ locals {
   efs_arn            = aws_efs_file_system.certificates.arn
   access_point_arns  = [aws_efs_access_point.certificates.arn, aws_efs_access_point.haleclock_data.arn]
   hosted_zone_arn    = "arn:aws:route53:::hostedzone/${var.hosted_zone_id}"
+  ses_identity_arn   = "arn:aws:ses:${var.aws_region}:${data.aws_caller_identity.current.account_id}:identity/hawihandyman.com"
+  google_enabled     = var.google_client_id != "" && var.google_client_secret != ""
+  facebook_enabled   = var.facebook_app_id != "" && var.facebook_app_secret != ""
+  apple_enabled = alltrue([
+    for value in [
+      var.apple_service_id,
+      var.apple_team_id,
+      var.apple_key_id,
+      var.apple_private_key,
+    ] : value != ""
+  ])
+  customer_identity_providers = concat(
+    ["COGNITO"],
+    local.google_enabled ? ["Google"] : [],
+    local.apple_enabled ? ["SignInWithApple"] : [],
+    local.facebook_enabled ? ["Facebook"] : [],
+  )
 }
 
 resource "aws_vpc" "site" {
@@ -291,6 +308,202 @@ resource "aws_iam_role_policy_attachment" "execution" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
+resource "aws_cognito_user_pool" "customers" {
+  name                     = "${local.name}-customers"
+  username_attributes      = ["email"]
+  auto_verified_attributes = ["email"]
+  mfa_configuration        = "OPTIONAL"
+
+  username_configuration {
+    case_sensitive = false
+  }
+
+  password_policy {
+    minimum_length                   = 12
+    require_lowercase                = true
+    require_numbers                  = true
+    require_symbols                  = true
+    require_uppercase                = true
+    temporary_password_validity_days = 7
+  }
+
+  account_recovery_setting {
+    recovery_mechanism {
+      name     = "verified_email"
+      priority = 1
+    }
+  }
+
+  email_configuration {
+    email_sending_account = "DEVELOPER"
+    from_email_address    = var.ses_from_address
+    reply_to_email_address = (
+      var.ses_reply_to_address != "" ? var.ses_reply_to_address : null
+    )
+    source_arn = aws_sesv2_email_identity.customers.arn
+  }
+}
+
+resource "aws_sesv2_email_identity" "customers" {
+  email_identity = "hawihandyman.com"
+}
+
+resource "aws_sesv2_email_identity_mail_from_attributes" "customers" {
+  email_identity         = aws_sesv2_email_identity.customers.email_identity
+  mail_from_domain       = "mail.hawihandyman.com"
+  behavior_on_mx_failure = "USE_DEFAULT_VALUE"
+
+  depends_on = [
+    aws_route53_record.ses_mail_from_mx,
+    aws_route53_record.ses_mail_from_spf,
+  ]
+}
+
+resource "aws_route53_record" "ses_dkim" {
+  count   = 3
+  zone_id = var.hosted_zone_id
+  name    = "${aws_sesv2_email_identity.customers.dkim_signing_attributes[0].tokens[count.index]}._domainkey.hawihandyman.com"
+  type    = "CNAME"
+  ttl     = 600
+  records = ["${aws_sesv2_email_identity.customers.dkim_signing_attributes[0].tokens[count.index]}.dkim.amazonses.com"]
+}
+
+resource "aws_route53_record" "ses_mail_from_mx" {
+  zone_id = var.hosted_zone_id
+  name    = "mail.hawihandyman.com"
+  type    = "MX"
+  ttl     = 600
+  records = ["10 feedback-smtp.${var.aws_region}.amazonses.com"]
+}
+
+resource "aws_route53_record" "ses_mail_from_spf" {
+  zone_id = var.hosted_zone_id
+  name    = "mail.hawihandyman.com"
+  type    = "TXT"
+  ttl     = 600
+  records = ["v=spf1 include:amazonses.com -all"]
+}
+
+resource "aws_route53_record" "ses_dmarc" {
+  zone_id = var.hosted_zone_id
+  name    = "_dmarc.hawihandyman.com"
+  type    = "TXT"
+  ttl     = 600
+  records = ["v=DMARC1; p=none;"]
+}
+
+resource "aws_cognito_identity_provider" "google" {
+  count         = local.google_enabled ? 1 : 0
+  user_pool_id  = aws_cognito_user_pool.customers.id
+  provider_name = "Google"
+  provider_type = "Google"
+
+  provider_details = {
+    authorize_scopes = "openid email profile"
+    client_id        = var.google_client_id
+    client_secret    = var.google_client_secret
+  }
+
+  attribute_mapping = {
+    email = "email"
+    name  = "name"
+  }
+}
+
+resource "aws_cognito_identity_provider" "apple" {
+  count         = local.apple_enabled ? 1 : 0
+  user_pool_id  = aws_cognito_user_pool.customers.id
+  provider_name = "SignInWithApple"
+  provider_type = "SignInWithApple"
+
+  provider_details = {
+    authorize_scopes = "email name"
+    client_id        = var.apple_service_id
+    key_id           = var.apple_key_id
+    team_id          = var.apple_team_id
+    private_key      = var.apple_private_key
+  }
+
+  attribute_mapping = {
+    email = "email"
+    name  = "name"
+  }
+}
+
+resource "aws_cognito_identity_provider" "facebook" {
+  count         = local.facebook_enabled ? 1 : 0
+  user_pool_id  = aws_cognito_user_pool.customers.id
+  provider_name = "Facebook"
+  provider_type = "Facebook"
+
+  provider_details = {
+    authorize_scopes = "email,public_profile"
+    client_id        = var.facebook_app_id
+    client_secret    = var.facebook_app_secret
+  }
+
+  attribute_mapping = {
+    email = "email"
+    name  = "name"
+  }
+}
+
+resource "aws_cognito_user_pool_domain" "customers" {
+  domain                = "hawihandyman-${var.aws_account_id}"
+  user_pool_id          = aws_cognito_user_pool.customers.id
+  managed_login_version = 2
+}
+
+resource "aws_cognito_user_pool_client" "customers" {
+  name                                 = "${local.name}-customer-web"
+  user_pool_id                         = aws_cognito_user_pool.customers.id
+  generate_secret                      = false
+  allowed_oauth_flows_user_pool_client = true
+  allowed_oauth_flows                  = ["code"]
+  allowed_oauth_scopes                 = ["openid", "email", "profile"]
+  supported_identity_providers         = local.customer_identity_providers
+  callback_urls = [
+    "https://www.hawihandyman.com/account/callback",
+    "https://hawihandyman.com/account/callback",
+    "http://localhost:8000/account/callback",
+  ]
+  logout_urls = [
+    "https://www.hawihandyman.com/book",
+    "https://hawihandyman.com/book",
+    "http://localhost:8000/book",
+  ]
+  enable_token_revocation       = true
+  prevent_user_existence_errors = "ENABLED"
+  access_token_validity         = 15
+  id_token_validity             = 15
+  refresh_token_validity        = 1
+
+  token_validity_units {
+    access_token  = "minutes"
+    id_token      = "minutes"
+    refresh_token = "days"
+  }
+
+  refresh_token_rotation {
+    feature                    = "ENABLED"
+    retry_grace_period_seconds = 0
+  }
+
+  read_attributes = ["email", "email_verified", "name"]
+
+  depends_on = [
+    aws_cognito_identity_provider.google,
+    aws_cognito_identity_provider.apple,
+    aws_cognito_identity_provider.facebook,
+  ]
+}
+
+resource "aws_cognito_managed_login_branding" "customers" {
+  user_pool_id                = aws_cognito_user_pool.customers.id
+  client_id                   = aws_cognito_user_pool_client.customers.id
+  use_cognito_provided_values = true
+}
+
 resource "aws_ssm_parameter" "haleclock_admin_password" {
   name  = "/${local.name}/haleclock/admin-password"
   type  = "SecureString"
@@ -397,6 +610,17 @@ resource "aws_iam_role_policy" "task" {
         Effect   = "Allow"
         Action   = ["route53:GetChange"]
         Resource = "arn:aws:route53:::change/*"
+      },
+      {
+        Sid      = "SendCustomerEmail"
+        Effect   = "Allow"
+        Action   = ["ses:SendEmail"]
+        Resource = local.ses_identity_arn
+        Condition = {
+          StringEquals = {
+            "ses:FromAddress" = var.ses_from_address
+          }
+        }
       }
     ]
   })
@@ -450,7 +674,16 @@ resource "aws_ecs_task_definition" "site" {
     ]
     environment = [
       { name = "CERTBOT_EMAIL", value = var.certbot_email },
-      { name = "HALECLOCK_DB", value = "/var/lib/haleclock/haleclock.db" }
+      { name = "HALECLOCK_DB", value = "/var/lib/haleclock/haleclock.db" },
+      { name = "HALECLOCK_COGNITO_REGION", value = var.aws_region },
+      { name = "HALECLOCK_COGNITO_USER_POOL_ID", value = aws_cognito_user_pool.customers.id },
+      { name = "HALECLOCK_COGNITO_CLIENT_ID", value = aws_cognito_user_pool_client.customers.id },
+      { name = "HALECLOCK_COGNITO_DOMAIN", value = "https://${aws_cognito_user_pool_domain.customers.domain}.auth.${var.aws_region}.amazoncognito.com" },
+      { name = "HALECLOCK_COGNITO_PROVIDERS", value = join(",", [for provider in local.customer_identity_providers : provider if provider != "COGNITO"]) },
+      { name = "HALECLOCK_PUBLIC_BASE_URL", value = "https://www.hawihandyman.com" },
+      { name = "HALECLOCK_SES_REGION", value = var.aws_region },
+      { name = "HALECLOCK_SES_FROM_ADDRESS", value = var.ses_from_address },
+      { name = "HALECLOCK_SES_REPLY_TO_ADDRESS", value = var.ses_reply_to_address },
     ]
     secrets = [
       {

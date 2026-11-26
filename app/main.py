@@ -9,7 +9,7 @@ from . import config
 from .auth import RequiresLogin, login_redirect
 from .auth import router as auth_router
 from .database import init_db
-from .routers import catalog, clock, invoices, public, schedule, timecards
+from .routers import catalog, clock, customer, invoices, public, schedule, timecards
 
 
 @asynccontextmanager
@@ -39,6 +39,7 @@ def healthz():
 
 
 app.include_router(auth_router)
+app.include_router(customer.router)
 app.include_router(public.router)
 app.include_router(clock.router)
 app.include_router(schedule.router)

@@ -8,12 +8,20 @@ from sqlmodel import Session, select
 
 from ..auth import require_admin
 from ..database import get_session, get_settings
+from ..email_service import send_appointment_email
 from ..models import Appointment, Client, Service
 from ..routers.public import normalize_phone
 from ..timeutil import local_now, to_local, to_utc
 from ..web import templates
 
 router = APIRouter(prefix="/app/schedule", dependencies=[Depends(require_admin)])
+
+
+def _email_redirect(path: str, delivery: bool | None) -> RedirectResponse:
+    if delivery is None:
+        return RedirectResponse(path, status_code=303)
+    status = "sent" if delivery else "failed"
+    return RedirectResponse(f"{path}?email={status}", status_code=303)
 
 
 def _conflicts(
@@ -84,6 +92,18 @@ def schedule(
     ]
     services = session.exec(select(Service).where(Service.active == True)).all()
     clients = session.exec(select(Client).order_by(Client.name)).all()
+    email_notice = {
+        "sent": "Customer email sent.",
+        "failed": (
+            "The appointment was saved, but its email could not be sent. "
+            "Please contact the customer directly."
+        ),
+    }.get(request.query_params.get("email"))
+    email_notice_class = (
+        "bg-emerald-50 text-emerald-800"
+        if request.query_params.get("email") == "sent"
+        else "bg-amber-50 text-amber-800"
+    )
     return templates.TemplateResponse(
         request,
         "admin/schedule.html",
@@ -99,6 +119,8 @@ def schedule(
             "week_days": week_days,
             "prev_start": first_day - timedelta(days=7),
             "next_start": first_day + timedelta(days=7),
+            "email_notice": email_notice,
+            "email_notice_class": email_notice_class,
         },
     )
 
@@ -110,6 +132,7 @@ def create_appointment(
     client_id: str = Form(""),
     new_client_name: str = Form(""),
     new_client_phone: str = Form(""),
+    new_client_email: str = Form(""),
     notes: str = Form(""),
     session: Session = Depends(get_session),
 ):
@@ -130,7 +153,9 @@ def create_appointment(
         if not new_client_name.strip():
             raise HTTPException(status_code=400, detail="Client name required")
         client = Client(
-            name=new_client_name.strip(), phone=normalize_phone(new_client_phone)
+            name=new_client_name.strip(),
+            phone=normalize_phone(new_client_phone),
+            email=new_client_email.strip() or None,
         )
         session.add(client)
         session.flush()
@@ -139,18 +164,20 @@ def create_appointment(
     end_utc = start_utc + timedelta(minutes=service.duration_minutes)
     if _conflicts(session, start_utc, end_utc):
         raise HTTPException(status_code=409, detail="Appointment overlaps a booked job")
-    session.add(
-        Appointment(
-            client_id=client.id,
-            service_id=service.id,
-            start_at=start_utc,
-            end_at=end_utc,
-            buffer_minutes=settings.travel_buffer_minutes,
-            notes=notes.strip() or None,
-        )
+    appointment = Appointment(
+        client_id=client.id,
+        service_id=service.id,
+        start_at=start_utc,
+        end_at=end_utc,
+        buffer_minutes=settings.travel_buffer_minutes,
+        notes=notes.strip() or None,
     )
+    session.add(appointment)
     session.commit()
-    return RedirectResponse("/app/schedule", status_code=303)
+    delivery = send_appointment_email(
+        client, appointment, service, settings, "booked"
+    )
+    return _email_redirect("/app/schedule", delivery)
 
 
 @router.post("/{appointment_id}/reschedule")
@@ -181,7 +208,14 @@ def reschedule_appointment(
     appointment.buffer_minutes = settings.travel_buffer_minutes
     session.add(appointment)
     session.commit()
-    return RedirectResponse("/app/schedule", status_code=303)
+    delivery = send_appointment_email(
+        session.get(Client, appointment.client_id),
+        appointment,
+        service,
+        settings,
+        "rescheduled",
+    )
+    return _email_redirect("/app/schedule", delivery)
 
 
 @router.post("/{appointment_id}/cancel")
@@ -190,9 +224,15 @@ def cancel_appointment(appointment_id: int, session: Session = Depends(get_sessi
     if appointment is None:
         raise HTTPException(status_code=404)
     appointment.status = "cancelled"
+    settings = get_settings(session)
+    service = session.get(Service, appointment.service_id)
+    client = session.get(Client, appointment.client_id)
     session.add(appointment)
     session.commit()
-    return RedirectResponse("/app/schedule", status_code=303)
+    delivery = send_appointment_email(
+        client, appointment, service, settings, "cancelled"
+    )
+    return _email_redirect("/app/schedule", delivery)
 
 
 @router.post("/{appointment_id}/done")
@@ -201,6 +241,12 @@ def complete_appointment(appointment_id: int, session: Session = Depends(get_ses
     if appointment is None:
         raise HTTPException(status_code=404)
     appointment.status = "done"
+    settings = get_settings(session)
+    service = session.get(Service, appointment.service_id)
+    client = session.get(Client, appointment.client_id)
     session.add(appointment)
     session.commit()
-    return RedirectResponse("/app/schedule", status_code=303)
+    delivery = send_appointment_email(
+        client, appointment, service, settings, "completed"
+    )
+    return _email_redirect("/app/schedule", delivery)

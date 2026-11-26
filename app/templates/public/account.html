@@ -1,0 +1,81 @@
+{% extends "public/base.html" %}
+{% block title %}My Projects · Hawi Handyman{% endblock %}
+{% block subtitle %}Customer account{% endblock %}
+{% block content %}
+<section class="bg-white rounded-2xl shadow p-5 space-y-4">
+  {% if account %}
+  <div class="flex items-start justify-between gap-3">
+    <div>
+      <h2 class="font-bold text-lg">My projects</h2>
+      {% if account.email %}<p class="text-sm text-slate-500">{{ account.email }}</p>{% endif %}
+    </div>
+    <form method="post" action="/account/logout">
+      <button class="text-sm text-emerald-700 underline">Log out</button>
+    </form>
+  </div>
+
+  {% if message %}<p class="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">{{ message }}</p>{% endif %}
+
+  {% if rows %}
+    <div class="space-y-3">
+      {% for row in rows %}
+      <article class="rounded-xl border border-slate-200 p-4 space-y-1">
+        <div class="flex items-start justify-between gap-2">
+          <h3 class="font-bold">{{ row.service.name }}</h3>
+          <span class="shrink-0 rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold uppercase">{{ row.appointment.status }}</span>
+        </div>
+        <p class="text-sm text-slate-600">{{ fmt_local(row.appointment.start_at, settings) }}</p>
+        {% if row.appointment.notes %}<p class="text-sm text-slate-500">{{ row.appointment.notes }}</p>{% endif %}
+      </article>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="text-sm text-slate-600">No projects are linked to your account yet.</p>
+  {% endif %}
+
+  {% if invoices %}
+  <div class="space-y-2">
+    <h3 class="font-bold">Invoices</h3>
+    {% for invoice in invoices %}
+    <a href="/i/{{ invoice.public_token }}" class="flex items-center justify-between gap-2 rounded-xl border border-slate-200 p-3 text-sm">
+      <span>{{ invoice.invoice_number }} · {{ invoice.status|title }}</span>
+      <span class="font-bold">{{ invoice.total|money }}</span>
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <div class="border-t border-slate-200 pt-4 space-y-3">
+    <h3 class="font-bold">Add an existing project</h3>
+    <p class="text-sm text-slate-500">Enter the confirmation code from your booking confirmation.</p>
+    <form method="post" action="/account/claim" class="flex gap-2">
+      <input name="confirmation_code" required autocomplete="off" placeholder="Confirmation code"
+             class="min-w-0 flex-1 h-12 rounded-xl border border-slate-300 px-3 font-mono">
+      <button class="h-12 px-4 rounded-xl bg-emerald-700 text-white font-bold">Add</button>
+    </form>
+  </div>
+  <a href="/book" class="block text-center text-sm text-emerald-700 underline">Book another project</a>
+  {% else %}
+  <h2 class="font-bold text-lg">Track your projects</h2>
+  <p class="text-sm text-slate-600">Sign in to see your bookings and invoices. You can also keep booking as a guest.</p>
+  {% if message %}
+  <p class="rounded-xl bg-amber-50 p-3 text-sm text-amber-800">{{ message }}</p>
+  {% elif not auth_enabled %}
+  <p class="rounded-xl bg-amber-50 p-3 text-sm text-amber-800">Customer sign-in is not configured yet.</p>
+  {% endif %}
+  {% if auth_enabled %}
+  <div class="space-y-2">
+    <a href="/account/login" class="block h-12 rounded-xl bg-emerald-700 text-center leading-[48px] text-white font-bold">
+      Continue with email and password
+    </a>
+    {% for provider in providers %}
+    <a href="/account/login?provider={{ provider.name }}" class="block h-12 rounded-xl border border-slate-300 text-center leading-[48px] font-semibold">
+      Continue with {{ provider.label }}
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+  <a href="/book" class="block text-center text-sm text-emerald-700 underline">Continue booking as a guest</a>
+  {% endif %}
+</section>
+{% endblock %}

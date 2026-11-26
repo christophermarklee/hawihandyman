@@ -7,8 +7,15 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import PlainTextResponse
 from sqlmodel import Session, select
 
+from .. import config
 from ..availability import available_slots, slot_is_available
+from ..customer_accounts import (
+    customer_account_from_request,
+    link_client_to_account,
+    linked_clients,
+)
 from ..database import get_session, get_settings
+from ..email_service import send_appointment_email
 from ..models import Appointment, Client, Invoice, InvoiceItem, Service
 from ..timeutil import local_now, to_utc
 from ..web import templates
@@ -34,6 +41,8 @@ def book_page(request: Request, session: Session = Depends(get_session)):
             "services": active_services(session),
             "settings": settings,
             "today": local_now(settings).date().isoformat(),
+            "customer_account": customer_account_from_request(request, session),
+            "customer_auth_enabled": config.cognito_settings() is not None,
         },
     )
 
@@ -115,12 +124,34 @@ def book(
     digits = normalize_phone(phone)
     if not digits or not name.strip():
         raise HTTPException(status_code=400, detail="Name and phone are required")
-    client = session.exec(select(Client).where(Client.phone == digits)).first()
+    account = customer_account_from_request(request, session)
+    if account is not None and account.id is None:
+        raise HTTPException(status_code=500, detail="Invalid customer account")
+    client_email = email.strip() or (account.email if account is not None else None)
+    if account is not None:
+        account_clients = linked_clients(session, account.id)
+        client = account_clients[0] if account_clients else None
+    else:
+        client = session.exec(select(Client).where(Client.phone == digits)).first()
+
     if client is None:
-        client = Client(name=name.strip(), phone=digits)
+        client = Client(
+            name=name.strip(),
+            phone=digits,
+            email=client_email,
+            address=address.strip() or None,
+        )
         session.add(client)
-    client.email = email.strip() or client.email
-    client.address = address.strip() or client.address
+        session.flush()
+        if account is not None and not link_client_to_account(
+            session, account.id, client.id
+        ):
+            raise HTTPException(status_code=409, detail="Customer profile unavailable")
+    else:
+        client.name = name.strip()
+        client.phone = digits
+        client.email = client_email or client.email
+        client.address = address.strip() or client.address
     session.flush()
 
     appointment = Appointment(
@@ -134,6 +165,9 @@ def book(
     session.add(appointment)
     session.commit()
     session.refresh(appointment)
+    email_delivery = send_appointment_email(
+        client, appointment, service, settings, "booked"
+    )
 
     return templates.TemplateResponse(
         request,
@@ -144,6 +178,8 @@ def book(
             "client": client,
             "settings": settings,
             "start_local": start_local,
+            "customer_account": account,
+            "email_delivery": email_delivery,
         },
     )
 

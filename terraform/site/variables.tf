@@ -43,3 +43,71 @@ variable "haleclock_secret_key" {
   type        = string
   sensitive   = true
 }
+
+variable "ses_from_address" {
+  description = "Verified customer email sender address on hawihandyman.com."
+  type        = string
+  default     = "bookings@hawihandyman.com"
+}
+
+variable "ses_reply_to_address" {
+  description = "Optional reply-to address for customer email."
+  type        = string
+  default     = ""
+}
+
+variable "google_client_id" {
+  description = "Google OAuth client ID for Cognito federation; leave empty to disable Google sign-in."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "google_client_secret" {
+  description = "Google OAuth client secret for Cognito federation."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "facebook_app_id" {
+  description = "Facebook app ID for Cognito federation; leave empty to disable Facebook sign-in."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "facebook_app_secret" {
+  description = "Facebook app secret for Cognito federation."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "apple_service_id" {
+  description = "Apple Services ID for Cognito federation; leave empty to disable Apple sign-in."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "apple_team_id" {
+  description = "Apple Developer Team ID."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "apple_key_id" {
+  description = "Apple Sign in with Apple key ID."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "apple_private_key" {
+  description = "Contents of the Apple Sign in with Apple .p8 private key."
+  type        = string
+  sensitive   = true
+  default     = ""
+}

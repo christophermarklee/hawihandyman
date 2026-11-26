@@ -6,12 +6,23 @@ import pytest
 os.environ.setdefault("HALECLOCK_SECRET_KEY", "test-secret")
 os.environ.setdefault("HALECLOCK_ADMIN_PASSWORD", "test-password")
 
+from fastapi.responses import RedirectResponse
 from fastapi.testclient import TestClient
 from sqlmodel import Session, select
 
-from app import database
+from app import database, email_service
 from app.main import app
-from app.models import Appointment, Client, Invoice, Timecard, compute_invoice_totals
+from app.models import (
+    Appointment,
+    Client,
+    CustomerAccount,
+    CustomerClientLink,
+    Invoice,
+    Timecard,
+    compute_invoice_totals,
+)
+from app.routers import customer as customer_router
+from app.routers import public as public_router
 
 
 @pytest.fixture()
@@ -135,6 +146,226 @@ class TestBooking:
         assert ics.status_code == 200
         assert "BEGIN:VCALENDAR" in ics.text
 
+    def test_booking_sends_confirmation_through_ses(self, client, monkeypatch):
+        monkeypatch.setenv("HALECLOCK_SES_REGION", "us-east-2")
+        monkeypatch.setenv(
+            "HALECLOCK_SES_FROM_ADDRESS", "bookings@hawihandyman.com"
+        )
+        monkeypatch.setenv(
+            "HALECLOCK_SES_REPLY_TO_ADDRESS", "support@hawihandyman.com"
+        )
+        sent = []
+
+        class FakeSesClient:
+            def send_email(self, **params):
+                sent.append(params)
+
+        monkeypatch.setattr(email_service, "_ses_client", lambda _region: FakeSesClient())
+        monday = next_weekday(0)
+        response = book_slot(
+            client,
+            1,
+            f"{monday}T09:00",
+            email="customer@example.com",
+        )
+
+        assert response.status_code == 200
+        assert "confirmation email has been sent" in response.text
+        assert len(sent) == 1
+        assert sent[0]["FromEmailAddress"] == "bookings@hawihandyman.com"
+        assert sent[0]["Destination"]["ToAddresses"] == ["customer@example.com"]
+        assert sent[0]["ReplyToAddresses"] == ["support@hawihandyman.com"]
+        assert "appointment is booked" in sent[0]["Content"]["Simple"]["Body"]["Text"][
+            "Data"
+        ]
+
+    def test_booking_discloses_when_email_cannot_be_sent(self, client, monkeypatch):
+        monkeypatch.delenv("HALECLOCK_SES_REGION", raising=False)
+        monkeypatch.delenv("HALECLOCK_SES_FROM_ADDRESS", raising=False)
+        monday = next_weekday(0)
+
+        response = book_slot(
+            client,
+            1,
+            f"{monday}T09:00",
+            email="customer@example.com",
+        )
+
+        assert response.status_code == 200
+        assert "booking is saved, but we couldn't send" in response.text
+
+    def test_ses_rejection_does_not_undo_booking(self, client, monkeypatch):
+        monkeypatch.setenv("HALECLOCK_SES_REGION", "us-east-2")
+        monkeypatch.setenv(
+            "HALECLOCK_SES_FROM_ADDRESS", "bookings@hawihandyman.com"
+        )
+
+        class RejectingSesClient:
+            def send_email(self, **_params):
+                raise email_service.ClientError(
+                    {
+                        "Error": {
+                            "Code": "MessageRejected",
+                            "Message": "Recipient is not verified",
+                        }
+                    },
+                    "SendEmail",
+                )
+
+        monkeypatch.setattr(
+            email_service, "_ses_client", lambda _region: RejectingSesClient()
+        )
+        monday = next_weekday(0)
+
+        response = book_slot(
+            client,
+            1,
+            f"{monday}T09:00",
+            email="customer@example.com",
+        )
+
+        assert response.status_code == 200
+        assert "booking is saved, but we couldn't send" in response.text
+        with Session(database.get_engine()) as session:
+            assert session.exec(select(Appointment)).one()
+
+    def test_signed_in_booking_does_not_claim_guest_history_by_phone(
+        self, client, monkeypatch
+    ):
+        monday = next_weekday(0)
+        assert book_slot(client, 1, f"{monday}T08:00").status_code == 200
+        with Session(database.get_engine()) as session:
+            account = CustomerAccount(cognito_sub="test-cognito-sub")
+            session.add(account)
+            session.commit()
+            account_id = account.id
+
+        monkeypatch.setattr(
+            public_router,
+            "customer_account_from_request",
+            lambda _request, session: session.get(CustomerAccount, account_id),
+        )
+        assert (
+            book_slot(client, 1, f"{monday}T12:00", name="Account Customer").status_code
+            == 200
+        )
+
+        with Session(database.get_engine()) as session:
+            appointments = session.exec(
+                select(Appointment).order_by(Appointment.start_at)
+            ).all()
+            links = session.exec(select(CustomerClientLink)).all()
+        assert appointments[0].client_id != appointments[1].client_id
+        assert len(links) == 1
+        assert links[0].account_id == account_id
+        assert links[0].client_id == appointments[1].client_id
+
+
+class TestCustomerAccounts:
+    def test_account_page_is_available_before_cognito_is_configured(
+        self, client, monkeypatch
+    ):
+        for key in (
+            "HALECLOCK_COGNITO_REGION",
+            "HALECLOCK_COGNITO_USER_POOL_ID",
+            "HALECLOCK_COGNITO_CLIENT_ID",
+            "HALECLOCK_COGNITO_DOMAIN",
+        ):
+            monkeypatch.delenv(key, raising=False)
+
+        response = client.get("/account")
+        assert response.status_code == 200
+        assert "Track your projects" in response.text
+        assert "Continue booking as a guest" in response.text
+        assert client.get("/account/login").status_code == 503
+
+    def test_customer_oidc_callback_creates_account_session(
+        self, client, monkeypatch
+    ):
+        monkeypatch.setenv("HALECLOCK_COGNITO_REGION", "us-east-2")
+        monkeypatch.setenv("HALECLOCK_COGNITO_USER_POOL_ID", "us-east-2_test")
+        monkeypatch.setenv("HALECLOCK_COGNITO_CLIENT_ID", "public-client-id")
+        monkeypatch.setenv(
+            "HALECLOCK_COGNITO_DOMAIN",
+            "https://hawihandyman-test.auth.us-east-2.amazoncognito.com",
+        )
+        monkeypatch.setenv("HALECLOCK_COGNITO_PROVIDERS", "Google")
+        monkeypatch.setenv("HALECLOCK_PUBLIC_BASE_URL", "https://testserver")
+        observed = {}
+
+        class FakeCognitoClient:
+            async def authorize_redirect(self, request, callback_url, **params):
+                observed["callback_url"] = callback_url
+                observed["identity_provider"] = params["identity_provider"]
+                assert params["nonce"]
+                return RedirectResponse(
+                    "https://example.test/authorize", status_code=302
+                )
+
+            async def authorize_access_token(self, _request):
+                return {
+                    "userinfo": {
+                        "sub": "cognito-customer-sub",
+                        "email": "customer@example.com",
+                    }
+                }
+
+        monkeypatch.setattr(
+            customer_router, "_cognito_client", lambda _settings: FakeCognitoClient()
+        )
+        login = client.get(
+            "/account/login?provider=Google", follow_redirects=False
+        )
+        assert login.status_code == 302
+        assert observed == {
+            "callback_url": "https://testserver/account/callback",
+            "identity_provider": "Google",
+        }
+
+        callback = client.get("/account/callback", follow_redirects=False)
+        assert callback.status_code == 303
+        dashboard = client.get("/account")
+        assert dashboard.status_code == 200
+        assert "customer@example.com" in dashboard.text
+        with Session(database.get_engine()) as session:
+            account = session.exec(select(CustomerAccount)).one()
+        assert account.cognito_sub == "cognito-customer-sub"
+
+    def test_customer_can_claim_project_with_booking_confirmation_code(
+        self, client, monkeypatch
+    ):
+        monday = next_weekday(0)
+        assert book_slot(client, 1, f"{monday}T10:00").status_code == 200
+        with Session(database.get_engine()) as session:
+            appointment = session.exec(select(Appointment)).one()
+            account = CustomerAccount(cognito_sub="customer-sub", email="test@example.com")
+            session.add(account)
+            session.commit()
+            account_id = account.id
+            code = appointment.confirmation_code
+
+        monkeypatch.setattr(
+            customer_router,
+            "customer_account_from_request",
+            lambda _request, session: session.get(CustomerAccount, account_id),
+        )
+        response = client.post(
+            "/account/claim",
+            data={"confirmation_code": code.lower()},
+            follow_redirects=False,
+        )
+        assert response.status_code == 303
+        assert response.headers["location"] == "/account"
+
+        dashboard = client.get("/account")
+        assert dashboard.status_code == 200
+        assert "1-Hour Small Repair" in dashboard.text
+        assert "Project added to your account." in dashboard.text
+        with Session(database.get_engine()) as session:
+            link = session.exec(select(CustomerClientLink)).one()
+        assert link.account_id == account_id
+        assert link.client_id == appointment.client_id
+
 
 class TestClock:
     def test_admin_pages_render(self, admin):
@@ -188,6 +419,39 @@ class TestClock:
 
 
 class TestSchedule:
+    def test_cancellation_notifies_customer_by_email(self, admin, monkeypatch):
+        monday = next_weekday(0)
+        monkeypatch.setenv("HALECLOCK_SES_REGION", "us-east-2")
+        monkeypatch.setenv(
+            "HALECLOCK_SES_FROM_ADDRESS", "bookings@hawihandyman.com"
+        )
+        sent = []
+
+        class FakeSesClient:
+            def send_email(self, **params):
+                sent.append(params)
+
+        monkeypatch.setattr(email_service, "_ses_client", lambda _region: FakeSesClient())
+        book_slot(
+            admin,
+            1,
+            f"{monday}T10:00",
+            email="customer@example.com",
+        )
+        sent.clear()
+        with Session(database.get_engine()) as session:
+            appointment = session.exec(select(Appointment)).one()
+
+        response = admin.post(
+            f"/app/schedule/{appointment.id}/cancel",
+            follow_redirects=False,
+        )
+
+        assert response.status_code == 303
+        assert response.headers["location"].endswith("?email=sent")
+        assert len(sent) == 1
+        assert "was cancelled" in sent[0]["Content"]["Simple"]["Subject"]["Data"]
+
     def test_calendar_shows_weekly_appointments_and_their_statuses(self, admin):
         monday = next_weekday(0)
         assert (
@@ -328,6 +592,36 @@ class TestInvoices:
         public = admin.get(f"/i/{invoice.public_token}")
         assert public.status_code == 200
         assert "222.51" in public.text
+
+    def test_invoice_issue_sends_customer_email(self, admin, monkeypatch):
+        monkeypatch.setenv("HALECLOCK_SES_REGION", "us-east-2")
+        monkeypatch.setenv(
+            "HALECLOCK_SES_FROM_ADDRESS", "bookings@hawihandyman.com"
+        )
+        sent = []
+
+        class FakeSesClient:
+            def send_email(self, **params):
+                sent.append(params)
+
+        monkeypatch.setattr(email_service, "_ses_client", lambda _region: FakeSesClient())
+        client_id = self._add_timecard(1, 100)
+        with Session(database.get_engine()) as session:
+            record = session.get(Client, client_id)
+            record.email = "customer@example.com"
+            session.add(record)
+            session.commit()
+
+        response = admin.post(
+            "/app/invoices/from-timecards",
+            data={"client_id": client_id, "tax_mode": "none", "timecard_ids": "1"},
+            follow_redirects=False,
+        )
+
+        assert response.status_code == 303
+        assert response.headers["location"].endswith("?email=sent")
+        assert sent[0]["Destination"]["ToAddresses"] == ["customer@example.com"]
+        assert "invoice INV-0001" in sent[0]["Content"]["Simple"]["Subject"]["Data"]
 
     def test_invalid_tax_and_negative_material_are_rejected(self, admin):
         client_id = self._add_timecard(1, 100)
