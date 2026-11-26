@@ -78,3 +78,8 @@ pricing and the generated Terraform plan before applying.
 Do not commit `.env`, AWS credentials, Terraform state, or Terraform plans.
 After creating the site stack, destroy `terraform/site` before removing the
 bootstrap resources if you want to tear down the deployment.
+
+For stronger audit visibility, enable CloudTrail S3 data events and S3 request
+metrics for the state bucket, and server access logging to a separate encrypted
+logging bucket. These account-level logging resources are intentionally not
+created by this minimal bootstrap.
