@@ -169,8 +169,9 @@ conda-meta/
 # Rope project settings
 .ropeproject
 
-# mkdocs/Zensical documentation
+# mkdocs/Zensical generated site output
 /site
+!/site/
 
 # mypy
 .mypy_cache/
@@ -221,3 +222,12 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Terraform local data and state
+.terraform/
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log

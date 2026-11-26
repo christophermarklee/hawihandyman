@@ -1,0 +1,27 @@
+{
+  "servers": {
+    "aws-mcp": {
+      "command": "uvx",
+      "args": [
+        "mcp-proxy-for-aws-cli@latest",
+        "https://aws-mcp.us-east-1.api.aws/mcp",
+        "--region",
+        "us-east-2",
+        "--metadata",
+        "INSTALL_SOURCE=aws-cli"
+      ],
+      "env": {
+        "AWS_MCP_PROXY_PROFILES": "hawihandyman"
+      }
+    },
+    "terraform": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "hashicorp/terraform-mcp-server:1.5.0"
+      ]
+    }
+  }
+}
