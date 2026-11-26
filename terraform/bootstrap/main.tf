@@ -184,6 +184,7 @@ resource "aws_iam_role_policy" "github_deploy" {
           "ec2:AuthorizeSecurityGroupEgress",
           "ec2:AuthorizeSecurityGroupIngress",
           "ec2:CreateInternetGateway",
+          "ec2:CreateNetworkInterface",
           "ec2:CreateRoute",
           "ec2:CreateRouteTable",
           "ec2:CreateSecurityGroup",
@@ -191,6 +192,7 @@ resource "aws_iam_role_policy" "github_deploy" {
           "ec2:CreateTags",
           "ec2:CreateVpc",
           "ec2:DeleteInternetGateway",
+          "ec2:DeleteNetworkInterface",
           "ec2:DeleteRoute",
           "ec2:DeleteRouteTable",
           "ec2:DeleteSecurityGroup",
@@ -324,6 +326,17 @@ resource "aws_iam_role_policy" "github_deploy" {
         Condition = {
           StringEquals = {
             "iam:AWSServiceName" = "ecs.amazonaws.com"
+          }
+        }
+      },
+      {
+        Sid      = "AllowLoadBalancingServiceLinkedRoleCreation"
+        Effect   = "Allow"
+        Action   = ["iam:CreateServiceLinkedRole"]
+        Resource = "arn:aws:iam::*:role/aws-service-role/elasticloadbalancing.amazonaws.com/AWSServiceRoleForElasticLoadBalancing"
+        Condition = {
+          StringEquals = {
+            "iam:AWSServiceName" = "elasticloadbalancing.amazonaws.com"
           }
         }
       }
