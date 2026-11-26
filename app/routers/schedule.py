@@ -1,4 +1,4 @@
-"""Admin schedule: agenda view plus fast manual booking (PRD A4)."""
+"""Admin schedule: calendar view plus fast manual booking (PRD A4)."""
 
 from datetime import date, datetime, timedelta
 
@@ -10,7 +10,7 @@ from ..auth import require_admin
 from ..database import get_session, get_settings
 from ..models import Appointment, Client, Service
 from ..routers.public import normalize_phone
-from ..timeutil import local_now, to_utc
+from ..timeutil import local_now, to_local, to_utc
 from ..web import templates
 
 router = APIRouter(prefix="/app/schedule", dependencies=[Depends(require_admin)])
@@ -48,12 +48,15 @@ def schedule(
 ):
     settings = get_settings(session)
     first_day = start or local_now(settings).date()
+    first_day -= timedelta(days=first_day.weekday())
     start_utc = to_utc(datetime.combine(first_day, datetime.min.time()), settings)
-    end_utc = start_utc + timedelta(days=7)
+    last_day = first_day + timedelta(days=6)
+    end_utc = to_utc(
+        datetime.combine(last_day + timedelta(days=1), datetime.min.time()), settings
+    )
     appointments = session.exec(
         select(Appointment)
         .where(
-            Appointment.status == "booked",
             Appointment.start_at >= start_utc,
             Appointment.start_at < end_utc,
         )
@@ -64,8 +67,20 @@ def schedule(
             "appointment": appointment,
             "client": session.get(Client, appointment.client_id),
             "service": session.get(Service, appointment.service_id),
+            "local_start": to_local(appointment.start_at, settings),
         }
         for appointment in appointments
+    ]
+    week_days = [
+        {
+            "date": first_day + timedelta(days=offset),
+            "rows": [
+                row
+                for row in rows
+                if row["local_start"].date() == first_day + timedelta(days=offset)
+            ],
+        }
+        for offset in range(7)
     ]
     services = session.exec(select(Service).where(Service.active == True)).all()
     clients = session.exec(select(Client).order_by(Client.name)).all()
@@ -79,6 +94,9 @@ def schedule(
             "services": services,
             "clients": clients,
             "first_day": first_day,
+            "last_day": last_day,
+            "today": local_now(settings).date(),
+            "week_days": week_days,
             "prev_start": first_day - timedelta(days=7),
             "next_start": first_day + timedelta(days=7),
         },

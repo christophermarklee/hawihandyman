@@ -162,6 +162,57 @@ class TestClock:
 
 
 class TestSchedule:
+    def test_calendar_shows_weekly_appointments_and_their_statuses(self, admin):
+        monday = next_weekday(0)
+        assert (
+            book_slot(
+                admin,
+                1,
+                f"{monday}T10:00",
+                name="Completed Client",
+            ).status_code
+            == 200
+        )
+        assert (
+            book_slot(
+                admin,
+                1,
+                f"{monday}T14:00",
+                phone="8085552222",
+                name="Cancelled Client",
+            ).status_code
+            == 200
+        )
+
+        with Session(database.get_engine()) as session:
+            appointments = session.exec(
+                select(Appointment).order_by(Appointment.start_at)
+            ).all()
+            appointment_ids = [appointment.id for appointment in appointments]
+
+        assert (
+            admin.post(
+                f"/app/schedule/{appointment_ids[0]}/done", follow_redirects=False
+            ).status_code
+            == 303
+        )
+        assert (
+            admin.post(
+                f"/app/schedule/{appointment_ids[1]}/cancel", follow_redirects=False
+            ).status_code
+            == 303
+        )
+
+        response = admin.get(f"/app/schedule?start={monday + timedelta(days=3)}")
+        assert response.status_code == 200
+        assert response.text.count('href="#appointment-') == 2
+        assert "Completed Client" in response.text
+        assert "Cancelled Client" in response.text
+        assert "10:00 AM" in response.text
+        assert "2:00 PM" in response.text
+        assert "done" in response.text
+        assert "cancelled" in response.text
+
     def test_manual_appointments_reject_conflicts_and_can_reschedule(self, admin):
         monday = next_weekday(0)
         assert book_slot(admin, 1, f"{monday}T10:00").status_code == 200

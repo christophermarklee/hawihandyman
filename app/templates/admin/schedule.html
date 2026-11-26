@@ -4,17 +4,54 @@
 {% block content %}
   <div class="flex items-center justify-between">
     <a href="/app/schedule?start={{ prev_start.isoformat() }}" class="h-12 px-4 rounded-xl bg-white shadow flex items-center font-bold">←</a>
-    <p class="font-bold">Week of {{ first_day.strftime('%b %-d') }}</p>
+    <p class="font-bold text-center">{{ first_day.strftime('%b %-d') }} – {{ last_day.strftime('%b %-d') }}</p>
     <a href="/app/schedule?start={{ next_start.isoformat() }}" class="h-12 px-4 rounded-xl bg-white shadow flex items-center font-bold">→</a>
   </div>
 
+  <section class="space-y-2">
+    <div class="flex items-center justify-between">
+      <h2 class="font-bold">Calendar</h2>
+      <p class="text-xs text-slate-500">Hawaii time</p>
+    </div>
+    <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+      {% for day in week_days %}
+      <div class="min-w-0 rounded-xl border p-2 space-y-2 {{ 'border-emerald-500 bg-emerald-50' if day.date == today else 'border-slate-200 bg-white' }}">
+        <div class="flex items-baseline justify-between gap-1">
+          <p class="font-bold text-sm">{{ day.date.strftime('%a') }}</p>
+          <p class="text-xs text-slate-500">{{ day.date.strftime('%b %-d') }}</p>
+        </div>
+        {% if day.rows %}
+          {% for row in day.rows %}
+          <a href="#appointment-{{ row.appointment.id }}"
+             class="block rounded-lg border-l-4 p-2 text-xs break-words {{ 'border-emerald-600 bg-emerald-100' if row.appointment.status == 'booked' else 'border-slate-400 bg-slate-100' if row.appointment.status == 'done' else 'border-red-300 bg-red-50 text-slate-500' }}">
+            <p class="font-bold">{{ row.local_start.strftime('%-I:%M %p') }}</p>
+            <p>{{ row.client.name }}</p>
+            <p class="text-slate-600">{{ row.service.name }}</p>
+            <p class="mt-1 uppercase tracking-wide text-[10px]">{{ row.appointment.status }}</p>
+          </a>
+          {% endfor %}
+        {% else %}
+          <p class="text-xs text-slate-400 py-1">No items</p>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <h2 class="font-bold">Appointment details</h2>
   {% if rows %}
     {% for row in rows %}
-    <div class="bg-white rounded-2xl shadow p-4 space-y-2">
+    <div id="appointment-{{ row.appointment.id }}" class="bg-white rounded-2xl shadow p-4 space-y-2">
+      <div class="flex items-start justify-between gap-2">
       <p class="font-bold">{{ fmt_local(row.appointment.start_at, settings) }}</p>
+        <span class="shrink-0 rounded-full px-2 py-1 text-xs font-bold uppercase {{ 'bg-emerald-100 text-emerald-800' if row.appointment.status == 'booked' else 'bg-slate-100 text-slate-600' if row.appointment.status == 'done' else 'bg-red-100 text-red-700' }}">
+          {{ row.appointment.status }}
+        </span>
+      </div>
       <p class="text-sm text-slate-600">{{ row.client.name }} · {{ row.service.name }}
         {% if row.client.address %}<br>{{ row.client.address }}{% endif %}
         {% if row.appointment.notes %}<br>📝 {{ row.appointment.notes }}{% endif %}</p>
+      {% if row.appointment.status == 'booked' %}
       <details>
         <summary class="text-sm text-slate-500 cursor-pointer py-2">Reschedule</summary>
         <form method="post" action="/app/schedule/{{ row.appointment.id }}/reschedule"
@@ -34,6 +71,7 @@
           <button class="h-12 px-4 rounded-xl bg-red-100 text-red-700 text-sm font-bold">Cancel</button>
         </form>
       </div>
+      {% endif %}
     </div>
     {% endfor %}
   {% else %}
