@@ -1,0 +1,37 @@
+{% extends "admin/base.html" %}
+{% block title %}Invoices{% endblock %}
+{% block heading %}Invoices{% endblock %}
+{% block content %}
+  <details class="bg-white rounded-2xl shadow p-4" open>
+    <summary class="font-bold cursor-pointer h-12 flex items-center">＋ New invoice</summary>
+    <form method="get" action="/app/invoices/new" class="flex gap-2 mt-2">
+      <select name="client_id" required class="flex-1 h-12 rounded-xl border border-slate-300 px-3">
+        <option value="" disabled selected>Pick a client…</option>
+        {% for client in clients %}
+        <option value="{{ client.id }}">{{ client.name }}</option>
+        {% endfor %}
+      </select>
+      <button class="h-12 px-5 rounded-xl bg-emerald-700 text-white font-bold">Go</button>
+    </form>
+  </details>
+
+  {% for row in rows %}
+  <a href="/app/invoices/{{ row.invoice.id }}" class="block bg-white rounded-2xl shadow p-4">
+    <div class="flex justify-between items-center">
+      <div>
+        <p class="font-bold">{{ row.invoice.invoice_number }} · {{ row.client.name }}</p>
+        <p class="text-sm text-slate-500">{{ fmt_local(row.invoice.created_at, settings, '%b %-d, %Y') }}</p>
+      </div>
+      <div class="text-right">
+        <p class="font-bold">{{ row.invoice.total | money }}</p>
+        {% set badge = {'paid': 'bg-emerald-100 text-emerald-800', 'sent': 'bg-sky-100 text-sky-800',
+                        'draft': 'bg-slate-100 text-slate-600', 'void': 'bg-red-100 text-red-700'} %}
+        <span class="text-xs font-bold px-2 py-1 rounded-full uppercase {{ badge[row.invoice.status] }}">
+          {{ row.invoice.status }}</span>
+      </div>
+    </div>
+  </a>
+  {% else %}
+  <p class="text-slate-500 text-sm bg-white rounded-2xl shadow p-4">No invoices yet.</p>
+  {% endfor %}
+{% endblock %}

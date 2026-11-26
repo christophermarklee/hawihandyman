@@ -1,0 +1,17 @@
+<div id="booking" class="bg-white rounded-2xl shadow p-6 space-y-4 text-center">
+  <p class="text-5xl">🤙</p>
+  <h2 class="text-xl font-black">You're booked!</h2>
+  <p class="font-bold text-emerald-700 text-lg">
+    {{ start_local.strftime('%A, %B %-d at %-I:%M %p') }}
+  </p>
+  <p class="text-sm text-slate-600">
+    {{ service.name }} — confirmation code
+    <span class="font-mono font-bold">{{ appointment.confirmation_code }}</span>
+  </p>
+  <p class="text-sm text-slate-500">We'll see you at {{ client.address }}.
+    Questions? Just reply to the confirmation text.</p>
+  <a href="/book/ics/{{ appointment.confirmation_code }}"
+     class="inline-block h-12 px-6 rounded-xl bg-emerald-700 text-white font-bold leading-[48px]">
+    📅 Add to calendar
+  </a>
+</div>

@@ -1,0 +1,13 @@
+{% if slots %}
+<div class="grid grid-cols-3 gap-2">
+  {% for slot in slots %}
+  <button type="button" data-slot="{{ slot.strftime('%Y-%m-%dT%H:%M') }}"
+          data-slot-label="{{ slot.strftime('%a %b %-d at %-I:%M %p') }}"
+          class="h-12 rounded-xl border border-emerald-600 text-emerald-700 font-bold">
+    {{ slot.strftime('%-I:%M %p') }}
+  </button>
+  {% endfor %}
+</div>
+{% else %}
+<p class="text-sm text-slate-500">No open times that day — try another date.</p>
+{% endif %}

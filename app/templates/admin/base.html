@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}HaleClock{% endblock %} · Hawi Handyman</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+</head>
+<body class="bg-slate-100 text-slate-900 min-h-screen pb-24">
+  <header class="bg-emerald-700 text-white px-4 py-3 flex items-center justify-between">
+    <h1 class="text-lg font-bold">{% block heading %}HaleClock{% endblock %}</h1>
+    <div class="flex items-center gap-4">
+      <a href="/app/services" class="text-emerald-100 text-sm underline">Services &amp; settings</a>
+      <form method="post" action="/app/logout">
+        <button class="text-emerald-100 text-sm underline">Log out</button>
+      </form>
+    </div>
+  </header>
+
+  <main class="max-w-xl mx-auto p-4 space-y-4">
+    {% block content %}{% endblock %}
+  </main>
+
+  <nav class="fixed bottom-0 inset-x-0 bg-white border-t border-slate-200 flex justify-around text-xs font-semibold">
+    {% set tabs = [
+      ('today', '/app', '⏱', 'Today'),
+      ('schedule', '/app/schedule', '📅', 'Schedule'),
+      ('timecards', '/app/timecards', '🗂', 'Timecards'),
+      ('invoices', '/app/invoices', '💵', 'Invoices'),
+    ] %}
+    {% for key, href, icon, label in tabs %}
+    <a href="{{ href }}" class="flex-1 flex flex-col items-center gap-1 py-3 min-h-[48px] {{ 'text-emerald-700' if tab == key else 'text-slate-500' }}">
+      <span class="text-xl leading-none">{{ icon }}</span>{{ label }}
+    </a>
+    {% endfor %}
+  </nav>
+
+  <script>
+    // Live elapsed-time + earnings ticker for the active timecard.
+    function tickClock() {
+      document.querySelectorAll('[data-clock-start]').forEach(function (el) {
+        var start = parseInt(el.dataset.clockStart, 10) * 1000;
+        var breakSeconds = parseInt(el.dataset.breakSeconds || '0', 10);
+        var breakStart = parseInt(el.dataset.breakStart || '0', 10) * 1000;
+        var rate = parseFloat(el.dataset.rate || '0');
+        var now = Date.now();
+        var totalBreak = breakSeconds * 1000 + (breakStart ? Math.max(now - breakStart, 0) : 0);
+        var worked = Math.max(now - start - totalBreak, 0);
+        var hours = Math.floor(worked / 3600000);
+        var minutes = Math.floor((worked % 3600000) / 60000);
+        var seconds = Math.floor((worked % 60000) / 1000);
+        var timeEl = el.querySelector('[data-role=elapsed]');
+        if (timeEl) timeEl.textContent =
+          hours + ':' + String(minutes).padStart(2, '0') + ':' + String(seconds).padStart(2, '0');
+        var moneyEl = el.querySelector('[data-role=earnings]');
+        if (moneyEl) moneyEl.textContent =
+          '$' + (worked / 3600000 * rate).toFixed(2);
+      });
+    }
+    setInterval(tickClock, 1000);
+    document.addEventListener('htmx:afterSwap', tickClock);
+    tickClock();
+  </script>
+</body>
+</html>

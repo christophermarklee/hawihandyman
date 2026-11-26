@@ -1,8 +1,59 @@
 # Hawi Handyman
 
-This repository builds and deploys a Fedora 45 Apache site to Amazon ECS/Fargate.
+This repository builds and deploys the Hawi Handyman website and **HaleClock**
+— a self-hosted scheduling, time-tracking, and cash-invoicing app — as a single
+Fedora 45 Apache + FastAPI container on Amazon ECS/Fargate.
 GitHub Actions uses OIDC for short-lived AWS credentials. Terraform state is
 stored in an encrypted, versioned S3 bucket with native S3 lock files.
+
+## HaleClock
+
+The FastAPI app in `app/` runs on `127.0.0.1:8000` inside the container; Apache
+serves the static landing page from `site/` at `/` and reverse-proxies these
+paths to the app:
+
+- `/book` — public client self-booking (service block → open slot → details),
+  with travel-buffer and double-booking protection (`BEGIN IMMEDIATE`).
+- `/i/{token}` — public shareable invoice links with a PAID stamp.
+- `/app` — password-protected mobile-first admin app: Today (one-tap clock in /
+  break / clock out with live earnings), Schedule, Timecards (manual entry and edits),
+  and Invoices (built from timecards + materials with Hawaii GET). Services and
+  Settings are available from the app header.
+- `/api` — availability and booking endpoints used by the booking page.
+
+All timestamps are stored as UTC in SQLite and rendered in the configured
+timezone (default `Pacific/Honolulu`). The database lives at
+`/var/lib/haleclock/haleclock.db` on a dedicated EFS access point, so it
+survives task replacement. WAL mode is deliberately not used because the
+database sits on NFS; the deployment is single-task/single-writer.
+
+### Local development
+
+```sh
+uv venv --python 3.14 .venv
+uv pip install --python .venv/bin/python -r requirements.txt pytest httpx
+HALECLOCK_DB=/tmp/haleclock.db \
+HALECLOCK_SECRET_KEY=dev-secret \
+HALECLOCK_ADMIN_PASSWORD=dev-password \
+.venv/bin/uvicorn app.main:app --reload
+```
+
+In another terminal:
+
+```sh
+.venv/bin/python -m pytest tests/
+```
+
+### Required GitHub Actions secrets
+
+```sh
+openssl rand -base64 48 | gh secret set HALECLOCK_ADMIN_PASSWORD
+openssl rand -base64 48 | gh secret set HALECLOCK_SECRET_KEY
+```
+
+Terraform stores both in SSM SecureString parameters, and the ECS task reads
+them as container secrets. Terraform state also contains their configured
+values; keep the encrypted S3 site state and any Terraform plans private.
 
 ## One-time AWS bootstrap
 
@@ -36,13 +87,16 @@ gh variable set TF_STATE_BUCKET --body "$(terraform -chdir=terraform/bootstrap o
 
 Push a change to `main` (or run the **Build and deploy** workflow manually).
 GitHub Actions builds an immutable image tagged with the commit SHA and
-workflow run ID, pushes it to ECR, then applies `terraform/site`. Replace the
-starter page in `site/` with the website content before deploying.
+workflow run ID, runs the app tests, pushes the image to ECR, then applies
+`terraform/site`. Before the first deploy of HaleClock, add the two Actions
+secrets above and re-apply `terraform/bootstrap` so its deployment role can
+manage the app's SSM parameters.
 
 The site stack creates a public VPC, an internet-facing Network Load Balancer,
-one Fargate task, and an encrypted EFS access point for persistent Certbot
-certificates. TCP 443 passes through the load balancer so Apache terminates
-HTTPS inside the container. Certbot uses Route 53 DNS validation for
+one Fargate task, and encrypted EFS access points for persistent Certbot
+certificates and the HaleClock SQLite database. TCP 443 passes through the load
+balancer so Apache terminates HTTPS inside the container. Certbot uses Route 53
+DNS validation for
 `hawihandyman.com` and `www.hawihandyman.com`; its contact address is
 `christopher@agilityqa.com`. Terraform creates the corresponding Route 53 A
 aliases in hosted zone `Z08420312N3V2BJTSCR9O`.

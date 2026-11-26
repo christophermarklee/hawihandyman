@@ -1,0 +1,68 @@
+{% extends "public/base.html" %}
+{% block content %}
+<div id="booking">
+  <section class="bg-white rounded-2xl shadow p-5 space-y-3">
+    <h2 class="font-bold text-lg">1 · Pick a service</h2>
+    <div class="space-y-2">
+      {% for service in services %}
+      <label class="flex items-center gap-3 rounded-xl border border-slate-200 p-4 has-[:checked]:border-emerald-600 has-[:checked]:bg-emerald-50">
+        <input type="radio" name="service_id" value="{{ service.id }}" form="slot-form"
+               class="h-5 w-5 accent-emerald-700"
+               hx-get="/api/availability" hx-include="#date-picker,this"
+               hx-target="#slots" hx-trigger="change">
+        <span class="flex-1">
+          <span class="font-bold block">{{ service.name }}</span>
+          {% if service.description %}<span class="text-sm text-slate-500">{{ service.description }}</span>{% endif %}
+        </span>
+        <span class="font-bold text-emerald-700">
+          ${{ '%g' % service.rate }}{{ '' if service.is_flat_rate else '/hr' }}
+        </span>
+      </label>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="bg-white rounded-2xl shadow p-5 space-y-3 mt-4">
+    <h2 class="font-bold text-lg">2 · Pick a day &amp; time</h2>
+    <input type="date" id="date-picker" name="date" required
+           hx-get="/api/availability" hx-include="input[name=service_id]:checked"
+           hx-target="#slots" hx-trigger="change"
+           class="w-full h-12 rounded-xl border border-slate-300 px-3">
+    <div id="slots" class="text-sm text-slate-500">Choose a service and date to see open times.</div>
+  </section>
+
+  <form id="slot-form" hx-post="/api/book" hx-target="#booking" hx-swap="outerHTML"
+        class="bg-white rounded-2xl shadow p-5 space-y-3 mt-4">
+    <h2 class="font-bold text-lg">3 · Your info</h2>
+    <input type="hidden" name="start" id="start-input" required>
+    <p id="chosen-slot" class="text-sm font-semibold text-emerald-700 hidden"></p>
+    <input name="name" required placeholder="Your name"
+           class="w-full h-12 rounded-xl border border-slate-300 px-3">
+    <input name="phone" required type="tel" placeholder="Phone number"
+           class="w-full h-12 rounded-xl border border-slate-300 px-3">
+    <input name="email" type="email" placeholder="Email (optional)"
+           class="w-full h-12 rounded-xl border border-slate-300 px-3">
+    <input name="address" required placeholder="Street address"
+           class="w-full h-12 rounded-xl border border-slate-300 px-3">
+    <textarea name="notes" rows="3" placeholder="What needs fixing?"
+              class="w-full rounded-xl border border-slate-300 px-3 py-2"></textarea>
+    <button class="w-full h-14 rounded-2xl bg-emerald-700 text-white text-xl font-black">
+      Book it
+    </button>
+  </form>
+</div>
+<script>
+  document.addEventListener('click', function (event) {
+    var button = event.target.closest('[data-slot]');
+    if (!button) return;
+    document.getElementById('start-input').value = button.dataset.slot;
+    var label = document.getElementById('chosen-slot');
+    label.textContent = 'Selected: ' + button.dataset.slotLabel;
+    label.classList.remove('hidden');
+    document.querySelectorAll('[data-slot]').forEach(function (el) {
+      el.classList.remove('bg-emerald-700', 'text-white');
+    });
+    button.classList.add('bg-emerald-700', 'text-white');
+  });
+</script>
+{% endblock %}

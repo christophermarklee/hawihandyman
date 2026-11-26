@@ -1,0 +1,31 @@
+{% extends "admin/base.html" %}
+{% block title %}Today{% endblock %}
+{% block heading %}Today{% endblock %}
+{% block content %}
+  {% include "admin/_clock_widget.html" %}
+
+  <section class="space-y-2">
+    <h2 class="text-sm font-bold uppercase tracking-wide text-slate-500">Today's appointments</h2>
+    {% if appointment_rows %}
+      {% for row in appointment_rows %}
+      <div class="bg-white rounded-2xl shadow p-4 flex items-center justify-between gap-3">
+        <div>
+          <p class="font-bold">{{ fmt_local(row.appointment.start_at, settings, '%-I:%M %p') }}
+            — {{ row.client.name }}</p>
+          <p class="text-sm text-slate-500">{{ row.service.name }}
+            {% if row.appointment.notes %} · {{ row.appointment.notes }}{% endif %}</p>
+        </div>
+        {% if not card %}
+        <button hx-post="/app/appointments/{{ row.appointment.id }}/start"
+                hx-target="#clock-widget" hx-swap="outerHTML"
+                class="shrink-0 h-12 px-4 rounded-xl bg-emerald-700 text-white font-bold">
+          Start Job
+        </button>
+        {% endif %}
+      </div>
+      {% endfor %}
+    {% else %}
+      <p class="text-slate-500 text-sm bg-white rounded-2xl shadow p-4">Nothing booked today. 🏖</p>
+    {% endif %}
+  </section>
+{% endblock %}

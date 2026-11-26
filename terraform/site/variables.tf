@@ -31,3 +31,15 @@ variable "vpc_cidr" {
   type        = string
   default     = "10.42.0.0/16"
 }
+
+variable "haleclock_admin_password" {
+  description = "Password for the HaleClock admin login."
+  type        = string
+  sensitive   = true
+}
+
+variable "haleclock_secret_key" {
+  description = "Secret key signing HaleClock session cookies."
+  type        = string
+  sensitive   = true
+}

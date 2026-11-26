@@ -1,0 +1,63 @@
+<div id="clock-widget" class="bg-white rounded-2xl shadow p-5 space-y-4">
+  {% if card %}
+    {% set on_break = card.active_break_start != None %}
+    <div data-clock-start="{{ card.clock_in_at | epoch }}"
+         data-break-seconds="{{ card.break_minutes * 60 }}"
+         data-break-start="{{ card.active_break_start | epoch if on_break else 0 }}"
+         data-rate="{{ card.hourly_rate }}"
+         class="text-center space-y-1">
+      <p class="text-sm font-semibold {{ 'text-amber-600' if on_break else 'text-emerald-700' }}">
+        {{ 'ON BREAK' if on_break else 'CLOCKED IN' }}
+        {% if card_client %} · {{ card_client.name }}{% endif %}
+      </p>
+      <p data-role="elapsed" class="text-5xl font-black tabular-nums">0:00:00</p>
+      <p class="text-slate-500">
+        <span data-role="earnings" class="font-bold text-slate-800">$0.00</span>
+        at ${{ '%g' % card.hourly_rate }}/hr
+        {% if card.break_minutes %} · {{ card.break_minutes }} min break{% endif %}
+      </p>
+    </div>
+    <div class="grid grid-cols-2 gap-3">
+      <button hx-post="/app/clock/break" hx-target="#clock-widget" hx-swap="outerHTML"
+              class="h-14 rounded-xl text-lg font-bold {{ 'bg-amber-500 text-white' if not on_break else 'bg-amber-100 text-amber-800' }}">
+        {{ 'End Break' if on_break else 'Start Break' }}
+      </button>
+      <button hx-post="/app/clock/out" hx-target="#clock-widget" hx-swap="outerHTML"
+              hx-confirm="Clock out now?"
+              class="h-14 rounded-xl bg-red-600 text-white text-lg font-bold">
+        Clock Out
+      </button>
+    </div>
+  {% else %}
+    {% if finished_card %}
+    <div class="rounded-xl bg-emerald-50 border border-emerald-200 p-4 text-sm space-y-1">
+      <p class="font-bold text-emerald-800">Shift saved ✔</p>
+      <p>{{ finished_card.billable_hours() | hours }} worked
+         {% if finished_card.break_minutes %} ({{ finished_card.break_minutes }} min break){% endif %}
+         — earned {{ finished_card.earnings() | money }}</p>
+    </div>
+    {% endif %}
+    <form hx-post="/app/clock/in" hx-target="#clock-widget" hx-swap="outerHTML" class="space-y-3">
+      <label class="block text-sm font-semibold text-slate-600">Client / job
+        <select name="client_id" class="mt-1 w-full h-12 rounded-xl border border-slate-300 px-3">
+          <option value="">— Walk-up / no client —</option>
+          {% for client in clients %}
+          <option value="{{ client.id }}">{{ client.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="block text-sm font-semibold text-slate-600">…or quick-create a client
+        <input name="new_client_name" placeholder="New client name"
+               class="mt-1 w-full h-12 rounded-xl border border-slate-300 px-3">
+      </label>
+      <label class="block text-sm font-semibold text-slate-600">Hourly rate ($)
+        <input name="hourly_rate" type="number" step="0.01" min="0" required
+               value="{{ '%g' % settings.default_hourly_rate }}"
+               class="mt-1 w-full h-12 rounded-xl border border-slate-300 px-3">
+      </label>
+      <button class="w-full h-16 rounded-2xl bg-emerald-700 text-white text-2xl font-black">
+        ▶ Clock In
+      </button>
+    </form>
+  {% endif %}
+</div>

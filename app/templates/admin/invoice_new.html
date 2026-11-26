@@ -1,0 +1,58 @@
+{% extends "admin/base.html" %}
+{% block title %}New invoice{% endblock %}
+{% block heading %}Invoice · {{ client.name }}{% endblock %}
+{% block content %}
+  <form method="post" action="/app/invoices/from-timecards" class="space-y-4">
+    <input type="hidden" name="client_id" value="{{ client.id }}">
+
+    <section class="bg-white rounded-2xl shadow p-4 space-y-3">
+      <h2 class="font-bold">Unbilled timecards</h2>
+      {% for card in timecards %}
+      <label class="flex items-center gap-3 py-2 border-b border-slate-100 last:border-0">
+        <input type="checkbox" name="timecard_ids" value="{{ card.id }}" checked
+               class="h-6 w-6 rounded accent-emerald-700">
+        <span class="flex-1 text-sm">
+          {{ fmt_local(card.clock_in_at, settings, '%a %b %-d') }} —
+          {{ card.billable_hours() | hours }} @ ${{ '%g' % card.hourly_rate }}/hr
+        </span>
+        <span class="font-bold">{{ card.earnings() | money }}</span>
+      </label>
+      {% else %}
+      <p class="text-sm text-slate-500">No unbilled timecards for this client.</p>
+      {% endfor %}
+    </section>
+
+    <section class="bg-white rounded-2xl shadow p-4 space-y-2">
+      <h2 class="font-bold">Materials / extras</h2>
+      {% for _ in range(3) %}
+      <div class="flex gap-2">
+        <input name="item_description" placeholder="e.g. Home Depot hardware"
+               class="flex-1 h-12 rounded-xl border border-slate-300 px-3">
+        <input name="item_amount" type="number" step="0.01" placeholder="$"
+               class="w-28 h-12 rounded-xl border border-slate-300 px-3">
+      </div>
+      {% endfor %}
+    </section>
+
+    <section class="bg-white rounded-2xl shadow p-4 space-y-3">
+      <h2 class="font-bold">Hawaii GET</h2>
+      <label class="flex items-center gap-3 h-12">
+        <input type="radio" name="tax_mode" value="add" checked class="h-5 w-5 accent-emerald-700">
+        Add tax on top</label>
+      <label class="flex items-center gap-3 h-12">
+        <input type="radio" name="tax_mode" value="included" class="h-5 w-5 accent-emerald-700">
+        Tax included in price</label>
+      <label class="flex items-center gap-3 h-12">
+        <input type="radio" name="tax_mode" value="none" class="h-5 w-5 accent-emerald-700">
+        No tax</label>
+      <label class="block text-sm font-semibold text-slate-600">GET rate (%)
+        <input name="tax_rate" type="number" step="0.001" value="{{ settings.tax_rate }}"
+               class="mt-1 w-full h-12 rounded-xl border border-slate-300 px-3">
+      </label>
+    </section>
+
+    <button class="w-full h-14 rounded-2xl bg-emerald-700 text-white text-xl font-black">
+      Create Invoice
+    </button>
+  </form>
+{% endblock %}

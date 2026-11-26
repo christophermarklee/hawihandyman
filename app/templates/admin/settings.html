@@ -1,0 +1,50 @@
+{% extends "admin/base.html" %}
+{% block title %}Settings{% endblock %}
+{% block heading %}Settings{% endblock %}
+{% block content %}
+  <div class="flex gap-2">
+    <a href="/app/services" class="flex-1 h-12 rounded-xl bg-white shadow font-bold flex items-center justify-center">Services</a>
+    <a href="/app/settings" class="flex-1 h-12 rounded-xl bg-emerald-700 text-white font-bold flex items-center justify-center">Settings</a>
+  </div>
+
+  <form method="post" action="/app/settings" class="bg-white rounded-2xl shadow p-4 space-y-4">
+    <div>
+      <p class="text-sm font-semibold text-slate-600 mb-2">Working days</p>
+      {% set day_names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] %}
+      {% set active_days = settings.work_days.split(',') %}
+      <div class="grid grid-cols-7 gap-1">
+        {% for name in day_names %}
+        <label class="flex flex-col items-center gap-1 text-xs font-bold py-2">
+          {{ name }}
+          <input type="checkbox" name="work_day_{{ loop.index0 }}" value="true"
+                 {{ 'checked' if loop.index0 | string in active_days }}
+                 class="h-6 w-6 accent-emerald-700">
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="grid grid-cols-2 gap-3">
+      <label class="block text-sm font-semibold text-slate-600">Day starts
+        <input type="time" name="work_start" value="{{ settings.work_start }}"
+               class="mt-1 w-full h-12 rounded-xl border border-slate-300 px-3">
+      </label>
+      <label class="block text-sm font-semibold text-slate-600">Day ends
+        <input type="time" name="work_end" value="{{ settings.work_end }}"
+               class="mt-1 w-full h-12 rounded-xl border border-slate-300 px-3">
+      </label>
+    </div>
+    <label class="block text-sm font-semibold text-slate-600">Travel buffer (minutes before/after jobs)
+      <input type="number" name="travel_buffer_minutes" min="0" step="5" value="{{ settings.travel_buffer_minutes }}"
+             class="mt-1 w-full h-12 rounded-xl border border-slate-300 px-3">
+    </label>
+    <label class="block text-sm font-semibold text-slate-600">Default hourly rate ($)
+      <input type="number" name="default_hourly_rate" step="0.01" value="{{ '%g' % settings.default_hourly_rate }}"
+             class="mt-1 w-full h-12 rounded-xl border border-slate-300 px-3">
+    </label>
+    <label class="block text-sm font-semibold text-slate-600">GET rate (%) — 4.712 Oahu, 4.5 neighbor islands
+      <input type="number" name="tax_rate" step="0.001" value="{{ settings.tax_rate }}"
+             class="mt-1 w-full h-12 rounded-xl border border-slate-300 px-3">
+    </label>
+    <button class="w-full h-12 rounded-xl bg-emerald-700 text-white font-bold">Save settings</button>
+  </form>
+{% endblock %}

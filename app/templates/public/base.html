@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Book · Hawi Handyman{% endblock %}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+</head>
+<body class="bg-slate-100 text-slate-900 min-h-screen">
+  <header class="bg-emerald-700 text-white px-4 py-4 text-center">
+    <h1 class="text-xl font-bold">Hawi Handyman</h1>
+    <p class="text-emerald-100 text-sm">{% block subtitle %}Book an appointment{% endblock %}</p>
+  </header>
+  <main class="max-w-xl mx-auto p-4 space-y-4 pb-16">
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

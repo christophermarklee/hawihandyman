@@ -1,0 +1,76 @@
+{% extends "admin/base.html" %}
+{% block title %}Schedule{% endblock %}
+{% block heading %}Schedule{% endblock %}
+{% block content %}
+  <div class="flex items-center justify-between">
+    <a href="/app/schedule?start={{ prev_start.isoformat() }}" class="h-12 px-4 rounded-xl bg-white shadow flex items-center font-bold">←</a>
+    <p class="font-bold">Week of {{ first_day.strftime('%b %-d') }}</p>
+    <a href="/app/schedule?start={{ next_start.isoformat() }}" class="h-12 px-4 rounded-xl bg-white shadow flex items-center font-bold">→</a>
+  </div>
+
+  {% if rows %}
+    {% for row in rows %}
+    <div class="bg-white rounded-2xl shadow p-4 space-y-2">
+      <p class="font-bold">{{ fmt_local(row.appointment.start_at, settings) }}</p>
+      <p class="text-sm text-slate-600">{{ row.client.name }} · {{ row.service.name }}
+        {% if row.client.address %}<br>{{ row.client.address }}{% endif %}
+        {% if row.appointment.notes %}<br>📝 {{ row.appointment.notes }}{% endif %}</p>
+      <details>
+        <summary class="text-sm text-slate-500 cursor-pointer py-2">Reschedule</summary>
+        <form method="post" action="/app/schedule/{{ row.appointment.id }}/reschedule"
+              class="flex gap-2 mt-1">
+          <input type="datetime-local" name="start" required
+                 value="{{ fmt_local(row.appointment.start_at, settings, '%Y-%m-%dT%H:%M') }}"
+                 class="min-w-0 flex-1 h-12 rounded-xl border border-slate-300 px-3">
+          <button class="h-12 px-4 rounded-xl bg-sky-100 text-sky-800 font-bold">Save</button>
+        </form>
+      </details>
+      <div class="flex gap-2">
+        <form method="post" action="/app/schedule/{{ row.appointment.id }}/done">
+          <button class="h-12 px-4 rounded-xl bg-emerald-100 text-emerald-800 text-sm font-bold">Done</button>
+        </form>
+        <form method="post" action="/app/schedule/{{ row.appointment.id }}/cancel"
+              onsubmit="return confirm('Cancel this appointment?')">
+          <button class="h-12 px-4 rounded-xl bg-red-100 text-red-700 text-sm font-bold">Cancel</button>
+        </form>
+      </div>
+    </div>
+    {% endfor %}
+  {% else %}
+    <p class="text-slate-500 text-sm bg-white rounded-2xl shadow p-4">No appointments this week.</p>
+  {% endif %}
+
+  <details class="bg-white rounded-2xl shadow p-4">
+    <summary class="font-bold cursor-pointer h-12 flex items-center">＋ New appointment</summary>
+    <form method="post" action="/app/schedule" class="space-y-3 mt-3">
+      <label class="block text-sm font-semibold text-slate-600">Service
+        <select name="service_id" required class="mt-1 w-full h-12 rounded-xl border border-slate-300 px-3">
+          {% for service in services %}
+          <option value="{{ service.id }}">{{ service.name }} ({{ service.duration_minutes }} min)</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="block text-sm font-semibold text-slate-600">Start
+        <input type="datetime-local" name="start" required
+               class="mt-1 w-full h-12 rounded-xl border border-slate-300 px-3">
+      </label>
+      <label class="block text-sm font-semibold text-slate-600">Existing client
+        <select name="client_id" class="mt-1 w-full h-12 rounded-xl border border-slate-300 px-3">
+          <option value="">— New client below —</option>
+          {% for client in clients %}
+          <option value="{{ client.id }}">{{ client.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <div class="grid grid-cols-2 gap-3">
+        <input name="new_client_name" placeholder="New client name"
+               class="h-12 rounded-xl border border-slate-300 px-3">
+        <input name="new_client_phone" placeholder="Phone"
+               class="h-12 rounded-xl border border-slate-300 px-3">
+      </div>
+      <input name="notes" placeholder="Job notes"
+             class="w-full h-12 rounded-xl border border-slate-300 px-3">
+      <button class="w-full h-12 rounded-xl bg-emerald-700 text-white font-bold">Save appointment</button>
+    </form>
+  </details>
+{% endblock %}

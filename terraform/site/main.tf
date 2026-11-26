@@ -9,7 +9,7 @@ locals {
   subnet_cidrs       = [for index in range(2) : cidrsubnet(var.vpc_cidr, 8, index)]
   ecr_repository_url = "${var.aws_account_id}.dkr.ecr.${var.aws_region}.amazonaws.com/${local.name}"
   efs_arn            = aws_efs_file_system.certificates.arn
-  access_point_arn   = aws_efs_access_point.certificates.arn
+  access_point_arns  = [aws_efs_access_point.certificates.arn, aws_efs_access_point.haleclock_data.arn]
   hosted_zone_arn    = "arn:aws:route53:::hostedzone/${var.hosted_zone_id}"
 }
 
@@ -147,6 +147,24 @@ resource "aws_efs_access_point" "certificates" {
   }
 }
 
+resource "aws_efs_access_point" "haleclock_data" {
+  file_system_id = aws_efs_file_system.certificates.id
+
+  posix_user {
+    uid = 0
+    gid = 0
+  }
+
+  root_directory {
+    path = "/haleclock"
+    creation_info {
+      owner_uid   = 0
+      owner_gid   = 0
+      permissions = "0700"
+    }
+  }
+}
+
 resource "aws_efs_file_system_policy" "certificates" {
   file_system_id = aws_efs_file_system.certificates.id
 
@@ -168,7 +186,7 @@ resource "aws_efs_file_system_policy" "certificates" {
           "aws:SecureTransport" = "true"
         }
         StringEquals = {
-          "elasticfilesystem:AccessPointArn" = local.access_point_arn
+          "elasticfilesystem:AccessPointArn" = local.access_point_arns
         }
       }
     }]
@@ -273,6 +291,36 @@ resource "aws_iam_role_policy_attachment" "execution" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
+resource "aws_ssm_parameter" "haleclock_admin_password" {
+  name  = "/${local.name}/haleclock/admin-password"
+  type  = "SecureString"
+  value = var.haleclock_admin_password
+}
+
+resource "aws_ssm_parameter" "haleclock_secret_key" {
+  name  = "/${local.name}/haleclock/secret-key"
+  type  = "SecureString"
+  value = var.haleclock_secret_key
+}
+
+resource "aws_iam_role_policy" "execution_secrets" {
+  name = "${local.name}-execution-secrets"
+  role = aws_iam_role.execution.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid    = "ReadHaleClockSecrets"
+      Effect = "Allow"
+      Action = ["ssm:GetParameters"]
+      Resource = [
+        aws_ssm_parameter.haleclock_admin_password.arn,
+        aws_ssm_parameter.haleclock_secret_key.arn
+      ]
+    }]
+  })
+}
+
 resource "aws_iam_role" "task" {
   name = "${local.name}-task"
 
@@ -313,7 +361,7 @@ resource "aws_iam_role_policy" "task" {
             "aws:SecureTransport" = "true"
           }
           StringEquals = {
-            "elasticfilesystem:AccessPointArn" = local.access_point_arn
+            "elasticfilesystem:AccessPointArn" = local.access_point_arns
           }
         }
       },
@@ -379,6 +427,18 @@ resource "aws_ecs_task_definition" "site" {
     }
   }
 
+  volume {
+    name = "haleclock-data"
+    efs_volume_configuration {
+      file_system_id     = aws_efs_file_system.certificates.id
+      transit_encryption = "ENABLED"
+      authorization_config {
+        access_point_id = aws_efs_access_point.haleclock_data.id
+        iam             = "ENABLED"
+      }
+    }
+  }
+
   container_definitions = jsonencode([{
     name      = local.name
     image     = "${local.ecr_repository_url}:${var.image_tag}"
@@ -389,13 +449,31 @@ resource "aws_ecs_task_definition" "site" {
       { containerPort = 443, protocol = "tcp" }
     ]
     environment = [
-      { name = "CERTBOT_EMAIL", value = var.certbot_email }
+      { name = "CERTBOT_EMAIL", value = var.certbot_email },
+      { name = "HALECLOCK_DB", value = "/var/lib/haleclock/haleclock.db" }
     ]
-    mountPoints = [{
-      sourceVolume  = "letsencrypt"
-      containerPath = "/etc/letsencrypt"
-      readOnly      = false
-    }]
+    secrets = [
+      {
+        name      = "HALECLOCK_ADMIN_PASSWORD"
+        valueFrom = aws_ssm_parameter.haleclock_admin_password.arn
+      },
+      {
+        name      = "HALECLOCK_SECRET_KEY"
+        valueFrom = aws_ssm_parameter.haleclock_secret_key.arn
+      }
+    ]
+    mountPoints = [
+      {
+        sourceVolume  = "letsencrypt"
+        containerPath = "/etc/letsencrypt"
+        readOnly      = false
+      },
+      {
+        sourceVolume  = "haleclock-data"
+        containerPath = "/var/lib/haleclock"
+        readOnly      = false
+      }
+    ]
     logConfiguration = {
       logDriver = "awslogs"
       options = {

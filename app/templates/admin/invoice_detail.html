@@ -1,0 +1,76 @@
+{% extends "admin/base.html" %}
+{% block title %}{{ invoice.invoice_number }}{% endblock %}
+{% block heading %}{{ invoice.invoice_number }}{% endblock %}
+{% block content %}
+  <section class="bg-white rounded-2xl shadow p-5 space-y-3">
+    <div class="flex justify-between items-start">
+      <div>
+        <p class="font-bold text-lg">{{ client.name }}</p>
+        <p class="text-sm text-slate-500">{{ fmt_local(invoice.created_at, settings, '%b %-d, %Y') }}</p>
+      </div>
+      {% set badge = {'paid': 'bg-emerald-100 text-emerald-800', 'sent': 'bg-sky-100 text-sky-800',
+                      'draft': 'bg-slate-100 text-slate-600', 'void': 'bg-red-100 text-red-700'} %}
+      <span class="text-xs font-bold px-3 py-1 rounded-full uppercase {{ badge[invoice.status] }}">
+        {{ invoice.status }}</span>
+    </div>
+
+    <table class="w-full text-sm">
+      {% for item in items %}
+      <tr class="border-b border-slate-100">
+        <td class="py-2 pr-2">{{ item.description }}</td>
+        <td class="py-2 text-right font-semibold">{{ item.amount | money }}</td>
+      </tr>
+      {% endfor %}
+      <tr><td class="py-2 text-slate-500">Subtotal</td>
+          <td class="py-2 text-right">{{ invoice.subtotal | money }}</td></tr>
+      {% if invoice.tax_amount %}
+      <tr><td class="py-2 text-slate-500">GET {{ invoice.tax_rate }}%{{ ' (included)' if invoice.tax_mode == 'included' else '' }}</td>
+          <td class="py-2 text-right">{{ invoice.tax_amount | money }}</td></tr>
+      {% endif %}
+      <tr class="text-lg font-black"><td class="py-2">Total</td>
+          <td class="py-2 text-right">{{ invoice.total | money }}</td></tr>
+    </table>
+
+    {% if invoice.status == 'paid' %}
+    <p class="text-emerald-700 font-bold">PAID — {{ invoice.payment_method }}
+      on {{ fmt_local(invoice.paid_at, settings, '%b %-d, %Y') }}</p>
+    {% endif %}
+  </section>
+
+  <section class="bg-white rounded-2xl shadow p-5 space-y-3">
+    <h2 class="font-bold">Share with client</h2>
+    <a href="{{ public_url }}" target="_blank"
+       class="block text-sm text-sky-700 underline break-all">{{ public_url }}</a>
+    <button type="button" id="copy-sms"
+            class="w-full h-12 rounded-xl bg-sky-600 text-white font-bold">
+      📋 Copy SMS text
+    </button>
+    <script>
+      document.getElementById('copy-sms').addEventListener('click', function () {
+        navigator.clipboard.writeText({{ sms_text | tojson }}).then(() => {
+          this.textContent = '✔ Copied!';
+        });
+      });
+    </script>
+  </section>
+
+  {% if invoice.status in ['draft', 'sent'] %}
+  <section class="bg-white rounded-2xl shadow p-5 space-y-3">
+    <h2 class="font-bold">Record payment</h2>
+    <form method="post" action="/app/invoices/{{ invoice.id }}/mark-paid" class="flex gap-2">
+      <select name="payment_method" class="flex-1 h-14 rounded-xl border border-slate-300 px-3 text-lg">
+        {% for method in payment_methods %}
+        <option value="{{ method }}">{{ method }}</option>
+        {% endfor %}
+      </select>
+      <button class="h-14 px-5 rounded-xl bg-emerald-700 text-white text-lg font-black">
+        Mark Paid
+      </button>
+    </form>
+    <form method="post" action="/app/invoices/{{ invoice.id }}/void"
+          onsubmit="return confirm('Void this invoice? Timecards become billable again.')">
+      <button class="w-full h-12 rounded-xl bg-red-100 text-red-700 font-bold">Void invoice</button>
+    </form>
+  </section>
+  {% endif %}
+{% endblock %}

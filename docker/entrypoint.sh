@@ -26,12 +26,27 @@ renew_certificates &
 renewal_pid=$!
 httpd -DFOREGROUND &
 httpd_pid=$!
+/opt/haleclock/venv/bin/uvicorn app.main:app \
+    --app-dir /opt/haleclock \
+    --host 127.0.0.1 \
+    --port 8000 \
+    --proxy-headers \
+    --forwarded-allow-ips 127.0.0.1 &
+haleclock_pid=$!
 
 shutdown() {
-    kill -TERM "$httpd_pid" "$renewal_pid" 2>/dev/null || true
+    kill -TERM "$httpd_pid" "$renewal_pid" "$haleclock_pid" 2>/dev/null || true
     wait "$httpd_pid" 2>/dev/null || true
     wait "$renewal_pid" 2>/dev/null || true
+    wait "$haleclock_pid" 2>/dev/null || true
 }
 trap shutdown TERM INT
 
-wait "$httpd_pid"
+if wait -n "$httpd_pid" "$haleclock_pid"; then
+    status=0
+else
+    status=$?
+fi
+shutdown
+trap - TERM INT
+exit "$status"

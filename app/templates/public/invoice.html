@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Invoice {{ invoice.invoice_number }} · Hawi Handyman</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-100 text-slate-900 min-h-screen">
+  <main class="max-w-xl mx-auto p-4 space-y-4 pb-16">
+    <section class="bg-white rounded-2xl shadow p-6 space-y-4 relative overflow-hidden">
+      {% if invoice.status == 'paid' %}
+      <div class="absolute top-6 right-[-40px] rotate-45 bg-emerald-600 text-white font-black px-12 py-1 text-sm tracking-widest">
+        PAID
+      </div>
+      {% endif %}
+      <div>
+        <h1 class="text-xl font-black">Hawi Handyman</h1>
+        <p class="text-sm text-slate-500">Hawi, Hawaii · hawihandyman.com</p>
+      </div>
+      <div class="flex justify-between text-sm">
+        <div>
+          <p class="text-slate-500">Billed to</p>
+          <p class="font-bold">{{ client.name }}</p>
+          {% if client.address %}<p>{{ client.address }}</p>{% endif %}
+        </div>
+        <div class="text-right">
+          <p class="font-bold">{{ invoice.invoice_number }}</p>
+          <p class="text-slate-500">{{ fmt_local(invoice.created_at, settings, '%b %-d, %Y') }}</p>
+          <p class="font-bold uppercase mt-1 {{ 'text-emerald-700' if invoice.status == 'paid' else 'text-amber-600' }}">
+            {{ 'Paid' if invoice.status == 'paid' else 'Due' }}
+          </p>
+        </div>
+      </div>
+
+      <table class="w-full text-sm">
+        {% for item in items %}
+        <tr class="border-b border-slate-100">
+          <td class="py-2 pr-2">{{ item.description }}</td>
+          <td class="py-2 text-right font-semibold whitespace-nowrap">${{ '%.2f' | format(item.amount) }}</td>
+        </tr>
+        {% endfor %}
+        <tr><td class="py-2 text-slate-500">Subtotal</td>
+            <td class="py-2 text-right">${{ '%.2f' | format(invoice.subtotal) }}</td></tr>
+        {% if invoice.tax_amount %}
+        <tr><td class="py-2 text-slate-500">Hawaii GET {{ invoice.tax_rate }}%{{ ' (included)' if invoice.tax_mode == 'included' else '' }}</td>
+            <td class="py-2 text-right">${{ '%.2f' | format(invoice.tax_amount) }}</td></tr>
+        {% endif %}
+        <tr class="text-lg font-black"><td class="py-3">Total</td>
+            <td class="py-3 text-right">${{ '%.2f' | format(invoice.total) }}</td></tr>
+      </table>
+
+      {% if invoice.status == 'paid' %}
+      <p class="text-sm text-emerald-700 font-semibold">
+        Paid by {{ invoice.payment_method }} on {{ fmt_local(invoice.paid_at, settings, '%b %-d, %Y') }}. Mahalo!
+      </p>
+      {% else %}
+      <p class="text-sm text-slate-600">
+        Payment accepted: <strong>Cash · Check · Venmo · Zelle</strong>. Mahalo for your business!
+      </p>
+      {% endif %}
+    </section>
+    <p class="text-center text-xs text-slate-400">
+      <a href="/" class="underline">hawihandyman.com</a>
+    </p>
+  </main>
+</body>
+</html>
