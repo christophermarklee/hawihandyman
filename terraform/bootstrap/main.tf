@@ -199,6 +199,7 @@ resource "aws_iam_role_policy" "github_deploy" {
           "ec2:DeleteSubnet",
           "ec2:DeleteVpc",
           "ec2:Describe*",
+          "ec2:GetSecurityGroupsForVpc",
           "ec2:DetachInternetGateway",
           "ec2:DisassociateRouteTable",
           "ec2:ModifySubnetAttribute",

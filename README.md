@@ -35,9 +35,9 @@ gh variable set TF_STATE_BUCKET --body "$(terraform -chdir=terraform/bootstrap o
 ## Deploy
 
 Push a change to `main` (or run the **Build and deploy** workflow manually).
-GitHub Actions builds an image tagged with the commit SHA, pushes it to ECR,
-then applies `terraform/site`. Replace the starter page in `site/` with the
-website content before deploying.
+GitHub Actions builds an immutable image tagged with the commit SHA and
+workflow run ID, pushes it to ECR, then applies `terraform/site`. Replace the
+starter page in `site/` with the website content before deploying.
 
 The site stack creates a public VPC, an internet-facing Network Load Balancer,
 one Fargate task, and an encrypted EFS access point for persistent Certbot
