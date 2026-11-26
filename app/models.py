@@ -38,6 +38,24 @@ class Client(SQLModel, table=True):
     created_at: NaiveDatetime = Field(default_factory=utcnow)
 
 
+class CustomerAccount(SQLModel, table=True):
+    __tablename__ = "customer_accounts"
+
+    id: int | None = Field(default=None, primary_key=True)
+    cognito_sub: str = Field(unique=True, index=True)
+    email: str | None = None
+    created_at: NaiveDatetime = Field(default_factory=utcnow)
+
+
+class CustomerClientLink(SQLModel, table=True):
+    __tablename__ = "customer_client_links"
+
+    id: int | None = Field(default=None, primary_key=True)
+    account_id: int = Field(foreign_key="customer_accounts.id", index=True)
+    client_id: int = Field(foreign_key="client.id", unique=True, index=True)
+    created_at: NaiveDatetime = Field(default_factory=utcnow)
+
+
 class Service(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     name: str

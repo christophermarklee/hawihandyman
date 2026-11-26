@@ -83,4 +83,14 @@ jobs:
           TF_VAR_image_tag: ${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           TF_VAR_haleclock_admin_password: ${{ secrets.HALECLOCK_ADMIN_PASSWORD }}
           TF_VAR_haleclock_secret_key: ${{ secrets.HALECLOCK_SECRET_KEY }}
+          TF_VAR_ses_from_address: ${{ vars.SES_FROM_ADDRESS || 'bookings@hawihandyman.com' }}
+          TF_VAR_ses_reply_to_address: ${{ vars.SES_REPLY_TO_ADDRESS || '' }}
+          TF_VAR_google_client_id: ${{ secrets.COGNITO_GOOGLE_CLIENT_ID }}
+          TF_VAR_google_client_secret: ${{ secrets.COGNITO_GOOGLE_CLIENT_SECRET }}
+          TF_VAR_facebook_app_id: ${{ secrets.COGNITO_FACEBOOK_APP_ID }}
+          TF_VAR_facebook_app_secret: ${{ secrets.COGNITO_FACEBOOK_APP_SECRET }}
+          TF_VAR_apple_service_id: ${{ secrets.COGNITO_APPLE_SERVICE_ID }}
+          TF_VAR_apple_team_id: ${{ secrets.COGNITO_APPLE_TEAM_ID }}
+          TF_VAR_apple_key_id: ${{ secrets.COGNITO_APPLE_KEY_ID }}
+          TF_VAR_apple_private_key: ${{ secrets.COGNITO_APPLE_PRIVATE_KEY }}
         run: terraform apply -auto-approve

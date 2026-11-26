@@ -1,6 +1,16 @@
 {% extends "public/base.html" %}
 {% block content %}
 <div id="booking">
+  {% if customer_account %}
+  <div class="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800 flex justify-between gap-2">
+    <span>Signed in{% if customer_account.email %} as {{ customer_account.email }}{% endif %}</span>
+    <a href="/account" class="font-bold underline">My projects</a>
+  </div>
+  {% elif customer_auth_enabled %}
+  <div class="text-right text-sm">
+    <a href="/account" class="text-emerald-700 underline">Sign in to track your projects</a>
+  </div>
+  {% endif %}
   <section class="bg-white rounded-2xl shadow p-5 space-y-3">
     <h2 class="font-bold text-lg">1 · Pick a service</h2>
     <div class="space-y-2">

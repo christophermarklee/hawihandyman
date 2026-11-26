@@ -8,10 +8,23 @@
     {{ service.name }} — confirmation code
     <span class="font-mono font-bold">{{ appointment.confirmation_code }}</span>
   </p>
+  {% if email_delivery is sameas true %}
+  <p class="text-sm text-emerald-700">A confirmation email has been sent.</p>
+  {% elif email_delivery is sameas false %}
+  <p class="text-sm text-amber-700">
+    Your booking is saved, but we couldn't send the confirmation email.
+    Please contact us if you need help.
+  </p>
+  {% endif %}
   <p class="text-sm text-slate-500">We'll see you at {{ client.address }}.
     Questions? Just reply to the confirmation text.</p>
   <a href="/book/ics/{{ appointment.confirmation_code }}"
      class="inline-block h-12 px-6 rounded-xl bg-emerald-700 text-white font-bold leading-[48px]">
     📅 Add to calendar
   </a>
+  {% if customer_account %}
+  <a href="/account" class="block text-sm text-emerald-700 underline">View this project in your account</a>
+  {% else %}
+  <a href="/account" class="block text-sm text-emerald-700 underline">Create an account to track projects</a>
+  {% endif %}
 </div>

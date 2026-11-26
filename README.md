@@ -55,6 +55,51 @@ Terraform stores both in SSM SecureString parameters, and the ECS task reads
 them as container secrets. Terraform state also contains their configured
 values; keep the encrypted S3 site state and any Terraform plans private.
 
+### Customer accounts
+
+`/account` uses an Amazon Cognito User Pool for email/password sign-up and
+sign-in. Customers can review their appointments and invoices, book new work
+while signed in, or claim an existing booking with its confirmation code.
+Guest booking remains available. A booking is the initial project record;
+multiple visits per project can be modeled separately if that workflow is
+needed later.
+
+The site stack provisions a Cognito managed-login domain and public OAuth app
+client. The app uses authorization-code flow with PKCE and stores only the
+local customer-account ID in its signed session, not Cognito tokens. The
+Cognito `sub` is the stable identity key; account history is never linked
+automatically by matching an email address or phone number.
+
+Social providers are enabled when their credentials are set as GitHub Actions
+secrets:
+
+- Google: `COGNITO_GOOGLE_CLIENT_ID`, `COGNITO_GOOGLE_CLIENT_SECRET`
+- Facebook: `COGNITO_FACEBOOK_APP_ID`, `COGNITO_FACEBOOK_APP_SECRET`
+- Apple: `COGNITO_APPLE_SERVICE_ID`, `COGNITO_APPLE_TEAM_ID`,
+  `COGNITO_APPLE_KEY_ID`, `COGNITO_APPLE_PRIVATE_KEY`
+
+Create the OAuth applications with each provider and register Cognito's
+`/oauth2/idpresponse` callback URL with them. Apple requires a Services ID and
+Sign in with Apple key; provide the `.p8` key contents as the Actions secret.
+The deployment workflow passes these credentials to Terraform, so the
+encrypted remote Terraform state contains their values. Restrict state-bucket
+access and never put provider credentials in source control or Terraform plans
+that are shared.
+
+### Customer email
+
+Amazon SES sends booking confirmations, appointment changes, invoice notices,
+and Cognito account verification emails from `bookings@hawihandyman.com`.
+Terraform creates the SES domain identity, DKIM records, and a custom MAIL FROM
+domain at `mail.hawihandyman.com`, plus a DMARC policy starting at `p=none`;
+the task uses its IAM role to send email without stored AWS credentials.
+Optionally set the GitHub Actions variable
+`SES_REPLY_TO_ADDRESS` if customer replies should go to a different address.
+
+New SES accounts can be restricted to verified recipients until production
+sending access is approved. The Terraform deployment does not request that
+account-level access automatically.
+
 ## One-time AWS bootstrap
 
 Use an AWS CLI profile with permission to create the bootstrap resources. The
@@ -88,9 +133,10 @@ gh variable set TF_STATE_BUCKET --body "$(terraform -chdir=terraform/bootstrap o
 Push a change to `main` (or run the **Build and deploy** workflow manually).
 GitHub Actions builds an immutable image tagged with the commit SHA and
 workflow run ID, runs the app tests, pushes the image to ECR, then applies
-`terraform/site`. Before the first deploy of HaleClock, add the two Actions
-secrets above and re-apply `terraform/bootstrap` so its deployment role can
-manage the app's SSM parameters.
+`terraform/site`. Before the first deploy of HaleClock or customer accounts,
+add the required HaleClock Actions secrets and re-apply `terraform/bootstrap`
+so its deployment role can manage the app's SSM parameters, Cognito user pool,
+SES identity, and SES DNS records.
 
 The site stack creates a public VPC, an internet-facing Network Load Balancer,
 one Fargate task, and encrypted EFS access points for persistent Certbot

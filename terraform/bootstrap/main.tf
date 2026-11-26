@@ -7,6 +7,7 @@ locals {
   state_object_arn   = "arn:aws:s3:::${local.state_bucket_name}/hawihandyman/site.tfstate"
   state_lock_arn     = "${local.state_object_arn}.tflock"
   ecr_repository_arn = "arn:aws:ecr:${var.aws_region}:${data.aws_caller_identity.current.account_id}:repository/${local.ecr_repository}"
+  ses_identity_arn   = "arn:aws:ses:${var.aws_region}:${data.aws_caller_identity.current.account_id}:identity/hawihandyman.com"
   zone_arn           = "arn:aws:route53:::hostedzone/${var.hosted_zone_id}"
   oidc_subject       = "repo:${var.github_owner}@${var.github_owner_id}/${var.github_repository}@${var.github_repository_id}:ref:refs/heads/${var.github_branch}"
 }
@@ -276,13 +277,75 @@ resource "aws_iam_role_policy" "github_deploy" {
         Resource = "*"
       },
       {
+        Sid      = "CreateCustomerUserPool"
+        Effect   = "Allow"
+        Action   = ["cognito-idp:CreateUserPool", "cognito-idp:ListUserPools"]
+        Resource = "*"
+      },
+      {
+        Sid    = "ManageCustomerCognitoResources"
+        Effect = "Allow"
+        Action = [
+          "cognito-idp:CreateIdentityProvider",
+          "cognito-idp:CreateManagedLoginBranding",
+          "cognito-idp:CreateUserPoolClient",
+          "cognito-idp:DeleteIdentityProvider",
+          "cognito-idp:DeleteManagedLoginBranding",
+          "cognito-idp:DeleteUserPool",
+          "cognito-idp:DeleteUserPoolClient",
+          "cognito-idp:DescribeIdentityProvider",
+          "cognito-idp:DescribeManagedLoginBranding",
+          "cognito-idp:DescribeManagedLoginBrandingByClient",
+          "cognito-idp:DescribeUserPool",
+          "cognito-idp:DescribeUserPoolClient",
+          "cognito-idp:ListIdentityProviders",
+          "cognito-idp:ListTagsForResource",
+          "cognito-idp:TagResource",
+          "cognito-idp:UntagResource",
+          "cognito-idp:UpdateIdentityProvider",
+          "cognito-idp:UpdateManagedLoginBranding",
+          "cognito-idp:UpdateUserPool",
+          "cognito-idp:UpdateUserPoolClient"
+        ]
+        Resource = "arn:aws:cognito-idp:${var.aws_region}:${data.aws_caller_identity.current.account_id}:userpool/*"
+      },
+      {
+        Sid    = "ManageCustomerCognitoDomains"
+        Effect = "Allow"
+        Action = [
+          "cognito-idp:CreateUserPoolDomain",
+          "cognito-idp:DeleteUserPoolDomain",
+          "cognito-idp:DescribeUserPoolDomain",
+        ]
+        Resource = "*"
+      },
+      {
+        Sid      = "CreateCustomerSesIdentity"
+        Effect   = "Allow"
+        Action   = ["ses:CreateEmailIdentity"]
+        Resource = "*"
+      },
+      {
+        Sid    = "ManageCustomerSesIdentity"
+        Effect = "Allow"
+        Action = [
+          "ses:DeleteEmailIdentity",
+          "ses:GetEmailIdentity",
+          "ses:ListTagsForResource",
+          "ses:PutEmailIdentityMailFromAttributes",
+          "ses:TagResource",
+          "ses:UntagResource"
+        ]
+        Resource = local.ses_identity_arn
+      },
+      {
         Sid      = "ReadHostedZoneForTerraform"
         Effect   = "Allow"
         Action   = ["route53:GetHostedZone", "route53:ListResourceRecordSets"]
         Resource = local.zone_arn
       },
       {
-        Sid      = "UpdateOnlySiteDnsRecords"
+        Sid      = "UpdateSiteAndSesDnsRecords"
         Effect   = "Allow"
         Action   = ["route53:ChangeResourceRecordSets"]
         Resource = local.zone_arn
@@ -290,11 +353,14 @@ resource "aws_iam_role_policy" "github_deploy" {
           "ForAllValues:StringLike" = {
             "route53:ChangeResourceRecordSetsNormalizedRecordNames" = [
               "hawihandyman.com",
-              "www.hawihandyman.com"
+              "www.hawihandyman.com",
+              "*._domainkey.hawihandyman.com",
+              "mail.hawihandyman.com",
+              "_dmarc.hawihandyman.com"
             ]
           }
           "ForAllValues:StringEquals" = {
-            "route53:ChangeResourceRecordSetsRecordTypes" = ["A"]
+            "route53:ChangeResourceRecordSetsRecordTypes" = ["A", "CNAME", "MX", "TXT"]
           }
           Null = {
             "route53:ChangeResourceRecordSetsNormalizedRecordNames" = "false"
@@ -358,6 +424,17 @@ resource "aws_iam_role_policy" "github_deploy" {
         Condition = {
           StringEquals = {
             "iam:AWSServiceName" = "elasticloadbalancing.amazonaws.com"
+          }
+        }
+      },
+      {
+        Sid      = "AllowCognitoEmailServiceLinkedRoleCreation"
+        Effect   = "Allow"
+        Action   = ["iam:CreateServiceLinkedRole"]
+        Resource = "arn:aws:iam::*:role/aws-service-role/email.cognito-idp.amazonaws.com/AWSServiceRoleForAmazonCognitoIdpEmailService"
+        Condition = {
+          StringEquals = {
+            "iam:AWSServiceName" = "email.cognito-idp.amazonaws.com"
           }
         }
       }

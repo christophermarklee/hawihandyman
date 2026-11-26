@@ -2,6 +2,9 @@
 {% block title %}Schedule{% endblock %}
 {% block heading %}Schedule{% endblock %}
 {% block content %}
+  {% if email_notice %}
+  <p class="rounded-xl {{ email_notice_class }} p-3 text-sm">{{ email_notice }}</p>
+  {% endif %}
   <div class="flex items-center justify-between">
     <a href="/app/schedule?start={{ prev_start.isoformat() }}" class="h-12 px-4 rounded-xl bg-white shadow flex items-center font-bold">←</a>
     <p class="font-bold text-center">{{ first_day.strftime('%b %-d') }} – {{ last_day.strftime('%b %-d') }}</p>
@@ -106,6 +109,8 @@
         <input name="new_client_phone" placeholder="Phone"
                class="h-12 rounded-xl border border-slate-300 px-3">
       </div>
+      <input name="new_client_email" type="email" placeholder="New client email (optional)"
+             class="w-full h-12 rounded-xl border border-slate-300 px-3">
       <input name="notes" placeholder="Job notes"
              class="w-full h-12 rounded-xl border border-slate-300 px-3">
       <button class="w-full h-12 rounded-xl bg-emerald-700 text-white font-bold">Save appointment</button>

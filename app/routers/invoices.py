@@ -6,8 +6,10 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from sqlmodel import Session, select
 
+from .. import config
 from ..auth import require_admin
 from ..database import get_session, get_settings
+from ..email_service import send_invoice_email
 from ..models import (
     Client,
     Invoice,
@@ -22,6 +24,13 @@ from ..web import templates
 router = APIRouter(prefix="/app/invoices", dependencies=[Depends(require_admin)])
 
 PAYMENT_METHODS = ["Cash", "Check", "Venmo", "Zelle"]
+
+
+def _email_redirect(path: str, delivery: bool | None) -> RedirectResponse:
+    if delivery is None:
+        return RedirectResponse(path, status_code=303)
+    status = "sent" if delivery else "failed"
+    return RedirectResponse(f"{path}?email={status}", status_code=303)
 
 
 def _next_invoice_number(session: Session) -> str:
@@ -181,7 +190,8 @@ async def create_from_timecards(
         card.invoice_id = invoice.id
         session.add(card)
     session.commit()
-    return RedirectResponse(f"/app/invoices/{invoice.id}", status_code=303)
+    delivery = send_invoice_email(client, invoice, "issued")
+    return _email_redirect(f"/app/invoices/{invoice.id}", delivery)
 
 
 @router.get("/{invoice_id}")
@@ -196,7 +206,19 @@ def invoice_detail(
     items = session.exec(
         select(InvoiceItem).where(InvoiceItem.invoice_id == invoice.id)
     ).all()
-    public_url = f"https://www.hawihandyman.com/i/{invoice.public_token}"
+    public_url = f"{config.public_base_url()}/i/{invoice.public_token}"
+    email_notice = {
+        "sent": "Customer email sent.",
+        "failed": (
+            "The invoice was saved, but its email could not be sent. "
+            "Please contact the customer directly."
+        ),
+    }.get(request.query_params.get("email"))
+    email_notice_class = (
+        "bg-emerald-50 text-emerald-800"
+        if request.query_params.get("email") == "sent"
+        else "bg-amber-50 text-amber-800"
+    )
     sms_text = (
         f"Aloha {client.name.split()[0] if client.name else ''}! Here's your invoice "
         f"{invoice.invoice_number} from Hawi Handyman for ${invoice.total:,.2f}: {public_url}"
@@ -213,6 +235,8 @@ def invoice_detail(
             "public_url": public_url,
             "sms_text": sms_text,
             "payment_methods": PAYMENT_METHODS,
+            "email_notice": email_notice,
+            "email_notice_class": email_notice_class,
         },
     )
 
@@ -233,13 +257,18 @@ def mark_paid(
     invoice.status = "paid"
     invoice.payment_method = payment_method
     invoice.paid_at = utcnow()
+    client = session.get(Client, invoice.client_id)
     session.add(invoice)
     session.commit()
-    return RedirectResponse(f"/app/invoices/{invoice_id}", status_code=303)
+    delivery = send_invoice_email(client, invoice, "paid")
+    return _email_redirect(f"/app/invoices/{invoice_id}", delivery)
 
 
 @router.post("/{invoice_id}/void")
-def void_invoice(invoice_id: int, session: Session = Depends(get_session)):
+def void_invoice(
+    invoice_id: int,
+    session: Session = Depends(get_session),
+):
     invoice = session.get(Invoice, invoice_id)
     if invoice is None:
         raise HTTPException(status_code=404)
@@ -248,6 +277,7 @@ def void_invoice(invoice_id: int, session: Session = Depends(get_session)):
             status_code=409, detail="Only unpaid invoices can be voided"
         )
     invoice.status = "void"
+    client = session.get(Client, invoice.client_id)
     cards = session.exec(
         select(Timecard).where(Timecard.invoice_id == invoice.id)
     ).all()
@@ -256,4 +286,5 @@ def void_invoice(invoice_id: int, session: Session = Depends(get_session)):
         session.add(card)
     session.add(invoice)
     session.commit()
-    return RedirectResponse(f"/app/invoices/{invoice_id}", status_code=303)
+    delivery = send_invoice_email(client, invoice, "void")
+    return _email_redirect(f"/app/invoices/{invoice_id}", delivery)
