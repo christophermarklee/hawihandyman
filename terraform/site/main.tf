@@ -314,6 +314,10 @@ resource "aws_cognito_user_pool" "customers" {
   auto_verified_attributes = ["email"]
   mfa_configuration        = "OPTIONAL"
 
+  software_token_mfa_configuration {
+    enabled = true
+  }
+
   username_configuration {
     case_sensitive = false
   }
