@@ -13,9 +13,13 @@
       header { background: var(--green); color: #fff; padding: 4rem 1.25rem 3rem; text-align: center; }
       header h1 { font-size: 2.25rem; letter-spacing: -0.02em; }
       header p { margin-top: 0.5rem; color: #d1fae5; font-size: 1.125rem; }
-      .cta { display: inline-block; margin-top: 1.75rem; background: #fff; color: var(--green);
+      .hero-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.75rem;
+                      margin-top: 1.75rem; }
+      .cta { display: inline-block; background: #fff; color: var(--green);
              font-weight: 700; font-size: 1.25rem; padding: 0.9rem 2.5rem; border-radius: 1rem;
              text-decoration: none; box-shadow: 0 4px 14px rgb(0 0 0 / 0.15); }
+      .cta-secondary { background: transparent; color: #fff;
+                       border: 1px solid rgb(255 255 255 / 0.7); }
       main { max-width: 42rem; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
       .services { display: grid; gap: 1rem; margin-top: 1rem; }
       .card { background: #fff; border-radius: 1rem; padding: 1.25rem;
@@ -31,7 +35,10 @@
     <header>
       <h1>Hawi Handyman</h1>
       <p>Honest repairs &amp; small projects in Hawi and North Kohala</p>
-      <a class="cta" href="/book">Book an appointment</a>
+      <div class="hero-actions">
+        <a class="cta" href="/book">Book an appointment</a>
+        <a class="cta cta-secondary" href="/account">Sign in or create account</a>
+      </div>
     </header>
     <main>
       <h2>How it works</h2>
