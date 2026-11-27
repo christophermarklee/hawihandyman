@@ -32,10 +32,10 @@ variable "vpc_cidr" {
   default     = "10.42.0.0/16"
 }
 
-variable "haleclock_admin_password" {
-  description = "Password for the HaleClock admin login."
-  type        = string
-  sensitive   = true
+variable "admin_emails" {
+  description = "Google email addresses allowed to access the HaleClock admin app."
+  type        = set(string)
+  default     = ["allinsheds@gmail.com", "christopher@agilityqa.com"]
 }
 
 variable "haleclock_secret_key" {

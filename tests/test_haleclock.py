@@ -1,10 +1,10 @@
 import os
 from datetime import date, datetime, timedelta
+from types import SimpleNamespace
 
 import pytest
 
 os.environ.setdefault("HALECLOCK_SECRET_KEY", "test-secret")
-os.environ.setdefault("HALECLOCK_ADMIN_PASSWORD", "test-password")
 
 from fastapi.responses import RedirectResponse
 from fastapi.testclient import TestClient
@@ -21,6 +21,7 @@ from app.models import (
     Timecard,
     compute_invoice_totals,
 )
+from app import auth as auth_router
 from app.routers import customer as customer_router
 from app.routers import public as public_router
 
@@ -35,12 +36,50 @@ def client(tmp_path, monkeypatch):
 
 
 @pytest.fixture()
-def admin(client):
-    response = client.post(
-        "/app/login", data={"password": "test-password"}, follow_redirects=False
-    )
+def admin(client, monkeypatch):
+    configure_admin_oauth(monkeypatch)
+    client.get("/app/login/google", follow_redirects=False)
+    response = client.get("/app/auth/callback", follow_redirects=False)
     assert response.status_code == 303
     return client
+
+
+def configure_admin_oauth(
+    monkeypatch, email="allinsheds@gmail.com", email_verified=True
+):
+    monkeypatch.setenv("HALECLOCK_COGNITO_REGION", "us-east-2")
+    monkeypatch.setenv("HALECLOCK_COGNITO_USER_POOL_ID", "us-east-2_test")
+    monkeypatch.setenv("HALECLOCK_COGNITO_CLIENT_ID", "public-client-id")
+    monkeypatch.setenv(
+        "HALECLOCK_COGNITO_DOMAIN",
+        "https://hawihandyman-test.auth.us-east-2.amazoncognito.com",
+    )
+    monkeypatch.setenv("HALECLOCK_COGNITO_PROVIDERS", "Google")
+    monkeypatch.setenv(
+        "HALECLOCK_ADMIN_EMAILS",
+        "allinsheds@gmail.com,christopher@agilityqa.com",
+    )
+    monkeypatch.setenv("HALECLOCK_PUBLIC_BASE_URL", "https://testserver")
+
+    class FakeCognitoClient:
+        async def authorize_redirect(self, request, callback_url, **params):
+            assert callback_url == "https://testserver/app/auth/callback"
+            assert params["identity_provider"] == "Google"
+            assert params["nonce"]
+            return RedirectResponse("https://example.test/authorize", status_code=302)
+
+        async def authorize_access_token(self, _request):
+            return {
+                "userinfo": {
+                    "sub": "google-admin-sub",
+                    "email": email,
+                    "email_verified": email_verified,
+                }
+            }
+
+    monkeypatch.setattr(
+        auth_router, "cognito_oauth_client", lambda _settings: FakeCognitoClient()
+    )
 
 
 def next_weekday(weekday: int) -> date:
@@ -311,7 +350,9 @@ class TestCustomerAccounts:
                 }
 
         monkeypatch.setattr(
-            customer_router, "_cognito_client", lambda _settings: FakeCognitoClient()
+            customer_router,
+            "cognito_oauth_client",
+            lambda _settings: FakeCognitoClient(),
         )
         login = client.get(
             "/account/login?provider=Google", follow_redirects=False
@@ -368,6 +409,66 @@ class TestCustomerAccounts:
 
 
 class TestClock:
+    @pytest.mark.parametrize(
+        "email",
+        [
+            "allinsheds@gmail.com",
+            "christopher@agilityqa.com",
+            "ALLINSHEDS@gmail.com",
+        ],
+    )
+    def test_admin_login_uses_google_sso_without_password_form(
+        self, client, monkeypatch, email
+    ):
+        configure_admin_oauth(monkeypatch, email)
+
+        login_page = client.get("/app/login")
+        assert login_page.status_code == 200
+        assert "Continue with Google" in login_page.text
+        assert 'type="password"' not in login_page.text
+        assert client.post("/app/login", data={"password": "anything"}).status_code == 405
+
+        response = client.get("/app/login/google", follow_redirects=False)
+        assert response.status_code == 302
+        assert response.headers["location"] == "https://example.test/authorize"
+
+        callback = client.get("/app/auth/callback", follow_redirects=False)
+        assert callback.status_code == 303
+        assert callback.headers["location"] == "/app"
+        assert client.get("/app").status_code == 200
+
+    def test_legacy_password_session_is_not_admin(self):
+        request = SimpleNamespace(session={"admin": True})
+
+        assert not auth_router.is_admin(request)
+
+    def test_admin_login_fails_closed_without_allowlist(self, client, monkeypatch):
+        configure_admin_oauth(monkeypatch)
+        monkeypatch.delenv("HALECLOCK_ADMIN_EMAILS")
+
+        response = client.get("/app/login")
+
+        assert response.status_code == 503
+        assert "Continue with Google" not in response.text
+
+    @pytest.mark.parametrize(
+        ("email", "email_verified"),
+        [
+            ("other@gmail.com", True),
+            ("allinsheds@gmail.com", False),
+        ],
+    )
+    def test_admin_google_callback_rejects_non_allowlisted_or_unverified_email(
+        self, client, monkeypatch, email, email_verified
+    ):
+        configure_admin_oauth(monkeypatch, email, email_verified)
+
+        response = client.get("/app/auth/callback", follow_redirects=False)
+
+        assert response.status_code == 403
+        assert "not authorized" in response.text
+        assert client.get("/app", follow_redirects=False).status_code == 303
+
     def test_admin_pages_render(self, admin):
         for path in (
             "/app",

@@ -15,7 +15,7 @@ paths to the app:
 - `/book` — public client self-booking (service block → open slot → details),
   with travel-buffer and double-booking protection (`BEGIN IMMEDIATE`).
 - `/i/{token}` — public shareable invoice links with a PAID stamp.
-- `/app` — password-protected mobile-first admin app: Today (one-tap clock in /
+- `/app` — Google SSO-protected mobile-first admin app: Today (one-tap clock in /
   break / clock out with live earnings), Schedule, Timecards (manual entry and edits),
   and Invoices (built from timecards + materials with Hawaii GET). Services and
   Settings are available from the app header.
@@ -34,7 +34,7 @@ uv venv --python 3.14 .venv
 uv pip install --python .venv/bin/python -r requirements.txt pytest httpx
 HALECLOCK_DB=/tmp/haleclock.db \
 HALECLOCK_SECRET_KEY=dev-secret \
-HALECLOCK_ADMIN_PASSWORD=dev-password \
+HALECLOCK_ADMIN_EMAILS=allinsheds@gmail.com,christopher@agilityqa.com \
 .venv/bin/uvicorn app.main:app --reload
 ```
 
@@ -47,13 +47,17 @@ In another terminal:
 ### Required GitHub Actions secrets
 
 ```sh
-openssl rand -base64 48 | gh secret set HALECLOCK_ADMIN_PASSWORD
 openssl rand -base64 48 | gh secret set HALECLOCK_SECRET_KEY
 ```
 
-Terraform stores both in SSM SecureString parameters, and the ECS task reads
-them as container secrets. Terraform state also contains their configured
-values; keep the encrypted S3 site state and any Terraform plans private.
+Terraform stores the session key in an SSM SecureString parameter, and the ECS
+task reads it as a container secret. Terraform state also contains its
+configured value; keep the encrypted S3 site state and any Terraform plans
+private.
+
+Admin access uses Google sign-in through Cognito and is restricted to
+`allinsheds@gmail.com` and `christopher@agilityqa.com`. The admin app requires
+the Google provider to be enabled; there is no password-login fallback.
 
 ### Customer accounts
 

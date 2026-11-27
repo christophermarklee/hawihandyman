@@ -409,8 +409,9 @@ resource "aws_cognito_identity_provider" "google" {
   }
 
   attribute_mapping = {
-    email = "email"
-    name  = "name"
+    email          = "email"
+    email_verified = "email_verified"
+    name           = "name"
   }
 }
 
@@ -468,8 +469,11 @@ resource "aws_cognito_user_pool_client" "customers" {
   supported_identity_providers         = local.customer_identity_providers
   callback_urls = [
     "https://www.hawihandyman.com/account/callback",
+    "https://www.hawihandyman.com/app/auth/callback",
     "https://hawihandyman.com/account/callback",
+    "https://hawihandyman.com/app/auth/callback",
     "http://localhost:8000/account/callback",
+    "http://localhost:8000/app/auth/callback",
   ]
   logout_urls = [
     "https://www.hawihandyman.com/book",
@@ -508,12 +512,6 @@ resource "aws_cognito_managed_login_branding" "customers" {
   use_cognito_provided_values = true
 }
 
-resource "aws_ssm_parameter" "haleclock_admin_password" {
-  name  = "/${local.name}/haleclock/admin-password"
-  type  = "SecureString"
-  value = var.haleclock_admin_password
-}
-
 resource "aws_ssm_parameter" "haleclock_secret_key" {
   name  = "/${local.name}/haleclock/secret-key"
   type  = "SecureString"
@@ -527,13 +525,10 @@ resource "aws_iam_role_policy" "execution_secrets" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Sid    = "ReadHaleClockSecrets"
-      Effect = "Allow"
-      Action = ["ssm:GetParameters"]
-      Resource = [
-        aws_ssm_parameter.haleclock_admin_password.arn,
-        aws_ssm_parameter.haleclock_secret_key.arn
-      ]
+      Sid      = "ReadHaleClockSecrets"
+      Effect   = "Allow"
+      Action   = ["ssm:GetParameters"]
+      Resource = [aws_ssm_parameter.haleclock_secret_key.arn]
     }]
   })
 }
@@ -684,16 +679,13 @@ resource "aws_ecs_task_definition" "site" {
       { name = "HALECLOCK_COGNITO_CLIENT_ID", value = aws_cognito_user_pool_client.customers.id },
       { name = "HALECLOCK_COGNITO_DOMAIN", value = "https://${aws_cognito_user_pool_domain.customers.domain}.auth.${var.aws_region}.amazoncognito.com" },
       { name = "HALECLOCK_COGNITO_PROVIDERS", value = join(",", [for provider in local.customer_identity_providers : provider if provider != "COGNITO"]) },
+      { name = "HALECLOCK_ADMIN_EMAILS", value = join(",", var.admin_emails) },
       { name = "HALECLOCK_PUBLIC_BASE_URL", value = "https://www.hawihandyman.com" },
       { name = "HALECLOCK_SES_REGION", value = var.aws_region },
       { name = "HALECLOCK_SES_FROM_ADDRESS", value = var.ses_from_address },
       { name = "HALECLOCK_SES_REPLY_TO_ADDRESS", value = var.ses_reply_to_address },
     ]
     secrets = [
-      {
-        name      = "HALECLOCK_ADMIN_PASSWORD"
-        valueFrom = aws_ssm_parameter.haleclock_admin_password.arn
-      },
       {
         name      = "HALECLOCK_SECRET_KEY"
         valueFrom = aws_ssm_parameter.haleclock_secret_key.arn

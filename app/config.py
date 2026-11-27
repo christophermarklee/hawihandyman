@@ -86,8 +86,9 @@ def secret_key() -> str:
     return key
 
 
-def admin_password() -> str:
-    password = os.environ.get("HALECLOCK_ADMIN_PASSWORD")
-    if not password:
-        raise RuntimeError("HALECLOCK_ADMIN_PASSWORD must be set")
-    return password
+def admin_emails() -> frozenset[str]:
+    return frozenset(
+        email.strip().casefold()
+        for email in os.environ.get("HALECLOCK_ADMIN_EMAILS", "").split(",")
+        if email.strip()
+    )

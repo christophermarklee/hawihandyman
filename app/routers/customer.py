@@ -3,12 +3,13 @@
 import secrets
 from urllib.parse import urlencode
 
-from authlib.integrations.starlette_client import OAuth, OAuthError
+from authlib.integrations.starlette_client import OAuthError
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from sqlmodel import Session, select
 
 from .. import config
+from ..cognito import cognito_oauth_client
 from ..customer_accounts import (
     customer_account_from_request,
     ensure_customer_account,
@@ -26,22 +27,6 @@ PROVIDER_LABELS = {
     "SignInWithApple": "Apple",
     "Facebook": "Facebook",
 }
-
-
-def _cognito_client(settings: config.CognitoSettings):
-    oauth = OAuth()
-    return oauth.register(
-        name="cognito",
-        client_id=settings.client_id,
-        client_secret=None,
-        server_metadata_url=(
-            f"{settings.issuer_url}/.well-known/openid-configuration"
-        ),
-        client_kwargs={
-            "scope": "openid email profile",
-            "code_challenge_method": "S256",
-        },
-    )
 
 
 def _account_page(request: Request, message: str | None = None, status_code: int = 200):
@@ -127,7 +112,7 @@ async def customer_login(request: Request, provider: str | None = None):
     if provider is not None and provider not in settings.providers:
         raise HTTPException(status_code=400, detail="Unsupported sign-in provider")
 
-    client = _cognito_client(settings)
+    client = cognito_oauth_client(settings)
     callback_url = f"{settings.public_base_url}/account/callback"
     extra_params = {"nonce": secrets.token_urlsafe(32)}
     if provider:
@@ -145,7 +130,7 @@ async def customer_callback(
             request, "Customer sign-in is not configured yet.", status_code=503
         )
     try:
-        token = await _cognito_client(settings).authorize_access_token(request)
+        token = await cognito_oauth_client(settings).authorize_access_token(request)
     except OAuthError:
         return _account_page(
             request, "Sign-in could not be completed. Please try again.", 400
