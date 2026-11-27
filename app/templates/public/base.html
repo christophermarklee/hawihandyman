@@ -4,12 +4,103 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Book · Hawi Handyman{% endblock %}</title>
+  <script>
+    window.tailwind = window.tailwind || {};
+    window.tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            emerald: {
+              50: "#eff4e9",
+              100: "#dce9d3",
+              300: "#a8c397",
+              500: "#68875a",
+              600: "#4f754f",
+              700: "#315b43",
+              800: "#284b39"
+            },
+            slate: {
+              100: "#f3efe5",
+              200: "#e6e0d2",
+              300: "#d1c9b8",
+              400: "#959286",
+              500: "#6c766c",
+              600: "#556257",
+              700: "#3d4d42",
+              900: "#25372f"
+            }
+          }
+        }
+      }
+    };
+  </script>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <style>
+    :root {
+      color-scheme: light;
+      --kohala-forest: #244b3b;
+      --kohala-sand: #f3efe5;
+      --kohala-cream: #fffdf6;
+      --kohala-clay: #d29665;
+    }
+    body.kohala-page {
+      min-height: 100vh;
+      color: #25372f;
+      background: linear-gradient(180deg, #f3efe5 0%, #f8f6ef 42%, #f3efe5 100%);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    .kohala-header {
+      position: relative;
+      isolation: isolate;
+      overflow: hidden;
+      background-image:
+        radial-gradient(circle at 88% 0%, rgb(210 150 101 / 0.25) 0 4rem, transparent 4.1rem),
+        linear-gradient(120deg, #1d4035, #315b43 58%, #477a78);
+      box-shadow: 0 8px 22px rgb(35 55 47 / 0.14);
+    }
+    .kohala-header::after {
+      content: "";
+      position: absolute;
+      z-index: -1;
+      right: -10%;
+      bottom: -3.5rem;
+      left: -10%;
+      height: 5rem;
+      border-radius: 50% 50% 0 0 / 100% 100% 0 0;
+      background: rgb(255 253 246 / 0.08);
+    }
+    .kohala-header > div,
+    .kohala-header > p { position: relative; z-index: 1; }
+    .kohala-header a:focus-visible,
+    .kohala-page a:focus-visible,
+    .kohala-page button:focus-visible,
+    .kohala-page input:focus-visible,
+    .kohala-page textarea:focus-visible {
+      outline: 3px solid var(--kohala-clay);
+      outline-offset: 2px;
+    }
+    .kohala-main { max-width: 48rem; }
+    .kohala-main #booking > section,
+    .kohala-main #booking > form,
+    .kohala-main > section {
+      border: 1px solid #e4dece;
+      background-color: var(--kohala-cream);
+      box-shadow: 0 10px 28px rgb(39 55 46 / 0.07);
+    }
+    .kohala-page input,
+    .kohala-page textarea {
+      background-color: #fffef9;
+    }
+    .kohala-page input[type="radio"] { accent-color: var(--kohala-forest); }
+    @media (max-width: 420px) {
+      .kohala-header nav { gap: 0.5rem; }
+    }
+  </style>
 </head>
-<body class="bg-slate-100 text-slate-900 min-h-screen">
-  <header class="bg-emerald-700 text-white px-4 py-4">
-    <div class="max-w-xl mx-auto flex items-center justify-between gap-4">
+<body class="min-h-screen kohala-page">
+  <header class="kohala-header bg-emerald-700 text-white px-4 py-4">
+    <div class="max-w-3xl mx-auto flex items-center justify-between gap-4">
       <a href="/" class="text-xl font-bold">Hawi Handyman</a>
       <nav class="flex items-center gap-4 text-sm font-semibold">
         <a href="/book" class="text-emerald-100 underline">Book</a>
@@ -18,7 +109,7 @@
     </div>
     <p class="mt-2 text-center text-emerald-100 text-sm">{% block subtitle %}Book an appointment{% endblock %}</p>
   </header>
-  <main class="max-w-xl mx-auto p-4 space-y-4 pb-16">
+  <main class="kohala-main mx-auto p-4 space-y-4 pb-16">
     {% block content %}{% endblock %}
   </main>
 </body>
